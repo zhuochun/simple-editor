@@ -95,11 +95,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return; // Project doesn't exist or already active
         }
 
-        // Save current project state before switching (if there was an active project)
-        if (activeProjectId && projects[activeProjectId]) {
-            saveCurrentProjectData(); // Ensure current state is stored
-        }
-
         activeProjectId = newProjectId;
         saveActiveProjectId(); // Persist the active project choice
         loadActiveProjectData(); // Load the new project's data into the working state
@@ -132,8 +127,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Saves the entire projects object to localStorage
     function saveProjectsData() {
         try {
-            // Before saving, ensure the current active project's data is up-to-date
-            saveCurrentProjectData();
             localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
         } catch (e) {
             console.error("Error saving projects data to localStorage:", e);
@@ -149,20 +142,6 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.removeItem(ACTIVE_PROJECT_ID_KEY);
         }
     }
-
-    // Saves the current working state (columns, cards) back into the active project's entry in the main 'projects' object
-    // This should be called before switching projects or saving all data.
-    function saveCurrentProjectData() {
-         if (activeProjectId && projects[activeProjectId]) {
-            // We are already modifying projects[activeProjectId].data directly
-            // via getActiveProjectData(), so this function might seem redundant.
-            // However, it's a good place to ensure the lastModified timestamp is updated.
-            updateProjectLastModified(activeProjectId);
-            // If 'appData' was a separate copy, we'd copy it back here.
-            // Since we operate directly on projects[activeProjectId].data, this is simpler.
-         }
-    }
-
 
     function loadProjectsData() {
         const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
