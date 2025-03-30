@@ -10,6 +10,19 @@
     transition: border-color 0.3s ease; /* Smooth transition if parent color changes */
 }
 
+.group-header {
+    padding: 3px 0 5px 0; /* Padding top/bottom */
+    margin-bottom: 5px; /* Space below header */
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1); /* Subtle separator */
+}
+
+.group-parent-id-prefix {
+    font-size: 0.8em;
+    color: #555; /* Slightly darker than card ID */
+    font-weight: bold;
+}
+
+
 /* Adjust card margin when inside a group */
 .child-group > .card {
     margin-bottom: 8px; /* Slightly less margin inside group */
@@ -117,6 +130,14 @@ body {
     align-items: center;
     font-size: 0.9em;
     min-height: 20px; /* Ensure header has some height */
+}
+
+.card-id-prefix {
+    font-size: 0.8em;
+    color: #666;
+    margin-right: 5px; /* Space between ID and controls */
+    white-space: nowrap; /* Prevent wrapping */
+    flex-shrink: 0; /* Prevent shrinking if controls take space */
 }
 
 .card-header .controls button {

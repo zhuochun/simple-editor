@@ -332,11 +332,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateCardContent(cardId, newContent) {
+    function updateCardContent(cardId, newHTMLContent) {
         if (cardData[cardId]) {
-            // Basic sanitization (optional): prevent injecting HTML contenteditable can create
-            // const sanitizedContent = newContent.replace(/<[^>]*>/g, ""); // Example: strip tags
-            cardData[cardId].content = newContent; // Store as text
+            // Store the raw HTML content to preserve formatting like line breaks (<br>, <div>)
+            // WARNING: This allows basic HTML. For security in a real app, sanitize this input.
+            cardData[cardId].content = newHTMLContent;
             saveData(); // Save immediately on blur
         }
     }
@@ -398,6 +398,14 @@ document.addEventListener('DOMContentLoaded', () => {
         header.draggable = true; // Header IS draggable
         header.classList.add('card-header');
 
+        // Display last 5 chars of ID
+        const idPrefix = document.createElement('span');
+        idPrefix.classList.add('card-id-prefix');
+        idPrefix.textContent = card.id.slice(-5); // Use slice(-5) for last 5 chars
+        idPrefix.title = `Card ID: ${card.id}`; // Show full ID on hover
+        header.appendChild(idPrefix);
+
+
         const controls = document.createElement('div');
         controls.classList.add('controls');
 
@@ -440,11 +448,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const contentArea = document.createElement('div');
         contentArea.classList.add('card-content');
         contentArea.contentEditable = true;
-        // Use textContent to set initial value (safer)
-        contentArea.textContent = card.content;
-        // On blur, update data with textContent (safer)
+        // Use innerHTML to set initial value to preserve formatting
+        contentArea.innerHTML = card.content || ''; // Use innerHTML and handle potential null/undefined
+        // On blur, update data with innerHTML to preserve formatting
         contentArea.onblur = () => {
-            updateCardContent(card.id, contentArea.textContent);
+            updateCardContent(card.id, contentArea.innerHTML); // Read innerHTML
         };
         // Focus scrolling behavior
          contentArea.onfocus = () => {
@@ -545,13 +553,27 @@ document.addEventListener('DOMContentLoaded', () => {
         groupElement.classList.add('child-group');
         groupElement.dataset.parentId = parentId; // Store parent ID on the group
 
-        // --- Set Group Border Color based on Parent ---
+        // --- Set Group Background Color based on Parent ---
         const parentCard = cardData[parentId];
         if (parentCard && parentCard.color) {
-            groupElement.style.borderColor = parentCard.color; // Corrected: Use borderColor
+            // Use a slightly modified version of the parent color for the group background
+            // Example: slightly desaturate or lighten the parent color
+            // For simplicity here, we'll just use the parent color directly for background
+            groupElement.style.backgroundColor = parentCard.color;
         } else {
-            groupElement.style.borderColor = '#e0e0e0'; // Default border if parent not found or has no color
+            groupElement.style.backgroundColor = '#f0f0f0'; // Default background if parent not found
         }
+        // ---
+
+        // --- Add Group Header with Parent ID Prefix ---
+        const groupHeader = document.createElement('div');
+        groupHeader.classList.add('group-header');
+        const parentIdPrefix = document.createElement('span');
+        parentIdPrefix.classList.add('group-parent-id-prefix');
+        parentIdPrefix.textContent = `Parent: ${parentId.slice(-5)}`; // Use slice(-5) for last 5 chars
+        parentIdPrefix.title = `Parent Card ID: ${parentId}`;
+        groupHeader.appendChild(parentIdPrefix);
+        groupElement.appendChild(groupHeader); // Add header to the group
         // ---
 
          // Add drag listeners to the group itself to allow dropping *into* an empty/specific group
@@ -1083,13 +1105,19 @@ document.addEventListener('DOMContentLoaded', () => {
              columnsToUpdate.add(originalColumnIndex);
         }
 
-        // --- Refresh Child Order if Parent Order Changed in First Column ---
-        if (targetColumnIndex === firstColumnIndex) {
-            const currentOrderIndex = columnOrder.indexOf(targetColumnIndex);
-            if (currentOrderIndex !== -1 && currentOrderIndex + 1 < columnOrder.length) {
-                const nextColIndex = columnOrder[currentOrderIndex + 1];
-                columnsToUpdate.add(nextColIndex); // Add the next column for re-rendering groups
-                console.log(`Parent order changed in Col ${targetColumnIndex}, triggering re-render of child groups in Col ${nextColIndex}`);
+        // --- Refresh All Subsequent Columns if Parent Order Potentially Changed ---
+        // If a drop happened in a column, the order of cards within that column might
+        // have changed. This affects the group order in the next column, which in turn
+        // affects the group order in the column after that, and so on.
+        // Therefore, we need to re-render *all* columns subsequent to the target column.
+        const targetOrderIndex = columnOrder.indexOf(targetColumnIndex);
+        if (targetOrderIndex !== -1) {
+            for (let i = targetOrderIndex + 1; i < columnOrder.length; i++) {
+                const subsequentColIndex = columnOrder[i];
+                if (!columnsToUpdate.has(subsequentColIndex)) { // Avoid adding if already present
+                    columnsToUpdate.add(subsequentColIndex);
+                    console.log(`Parent order potentially changed in Col ${columnOrder[i-1]}, triggering re-render of child groups in Col ${subsequentColIndex}`);
+                }
             }
         }
         // ---
