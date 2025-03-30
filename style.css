@@ -1,3 +1,12 @@
+/* --- General Layout & Resizer --- */
+:root {
+    --sidebar-width: 250px;
+    --resizer-width: 5px;
+    --min-sidebar-width: 150px;
+    --header-height: 44px; /* Column toolbar height + padding */
+    --card-header-height: 29px; /* Card header height + padding */
+}
+
 body {
     font-family: sans-serif;
     margin: 0;
@@ -7,31 +16,152 @@ body {
     overflow: hidden; /* Prevent body scroll */
 }
 
+#sidebar {
+    width: var(--sidebar-width);
+    min-width: var(--min-sidebar-width);
+    background-color: #dde1e6;
+    border-right: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    flex-shrink: 0;
+    overflow: hidden; /* Prevent content overflow */
+    box-sizing: border-box;
+}
+
+#resizer {
+    width: var(--resizer-width);
+    background-color: #c0c0c0;
+    cursor: ew-resize;
+    height: 100%;
+    flex-shrink: 0;
+}
+#resizer:hover {
+    background-color: #aaa;
+}
+
+
+#main-content {
+    flex-grow: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden; /* Contain app scrolling */
+}
+
 #app {
     display: flex;
     flex-grow: 1;
     padding: 15px;
     box-sizing: border-box;
+    height: calc(100% - 30px); /* Adjust based on padding */
+    overflow: hidden; /* Crucial: Prevent app from overflowing main-content */
 }
 
 .columns-container {
     display: flex;
     gap: 15px;
     flex-grow: 1;
-    height: 100%;
+    height: 100%; /* Take full height of #app */
     overflow-x: auto; /* Allow horizontal scrolling for columns */
     padding-bottom: 15px; /* Space for horizontal scrollbar */
+    box-sizing: border-box;
 }
+
+/* --- Sidebar Specific --- */
+#add-project-btn {
+    display: block;
+    width: calc(100% - 20px);
+    margin: 10px;
+    padding: 8px 10px;
+    font-size: 0.9em;
+    font-weight: bold;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    text-align: center;
+}
+#add-project-btn:hover {
+    background-color: #0056b3;
+}
+
+#project-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 0 5px 10px 5px; /* Add padding */
+}
+
+.project-item {
+    padding: 8px 10px;
+    margin: 3px 0;
+    cursor: pointer;
+    border-radius: 4px;
+    background-color: #f0f4f8;
+    border: 1px solid transparent; /* Placeholder for active state */
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+    word-break: break-word; /* Prevent long titles overflowing */
+}
+
+.project-item:hover {
+    background-color: #e4eaf1;
+}
+
+.project-item.active {
+    background-color: #cce5ff;
+    border-color: #b8daff;
+    font-weight: bold;
+}
+
+.project-title {
+    flex-grow: 1;
+    margin-right: 8px;
+}
+
+.project-title-input {
+    width: 100%;
+    font-size: inherit;
+    padding: 1px 3px;
+    border: 1px solid #aaa;
+    border-radius: 3px;
+    box-sizing: border-box; /* Include padding/border in width */
+}
+
+.project-actions {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.project-actions button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.9em;
+    padding: 2px 3px;
+    color: #555;
+}
+.project-actions button:hover {
+    color: #000;
+}
+
+
+/* --- Existing Column & Card Styles (mostly unchanged) --- */
 
 .column {
     background-color: #e0e0e0;
     border-radius: 5px;
     width: 450px;
     flex-shrink: 0; /* Prevent columns from shrinking */
-    height: 100%;
+    height: 100%; /* Take full height of columns-container */
     display: flex;
     flex-direction: column;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-sizing: border-box;
 }
 
 .column-toolbar {
@@ -39,7 +169,7 @@ body {
     top: 0;
     background-color: #d0d0d0;
     padding: 8px;
-    height: 28px;
+    height: 28px; /* Fixed height for calculation */
     border-bottom: 1px solid #ccc;
     z-index: 10;
     display: flex;
@@ -47,6 +177,7 @@ body {
     gap: 5px;
     border-top-left-radius: 5px;
     border-top-right-radius: 5px;
+    flex-shrink: 0; /* Prevent toolbar from shrinking */
 }
 
 .toolbar-left, .toolbar-right {
@@ -71,11 +202,12 @@ body {
 }
 
 .cards-container {
-    flex-grow: 1;
+    flex-grow: 1; /* Take remaining space in column */
     overflow-y: auto; /* Enable vertical scrolling for cards */
     padding: 10px;
     min-height: 50px; /* Ensure drop zone exists */
     position: relative; /* For drag-over indicators */
+    /* Removed height: calc(...) as flex-grow should handle it */
 }
 
 /* --- Card Styling --- */
@@ -104,6 +236,7 @@ body {
     border-bottom: 1px solid #eee;
     font-size: 0.8em;
     user-select: none; /* Prevent text selection during drag */
+    height: 19px; /* Fixed height for calculation */
 }
 
 .card-id {
@@ -125,7 +258,7 @@ body {
 }
 
 .card-content {
-    width: calc(100% - 5px); /* Full width minus padding */
+    width: calc(100% - 20px); /* Adjusted for padding */
     min-height: 50px;
     padding: 10px;
     border: none;
@@ -136,6 +269,7 @@ body {
     display: block;
     box-sizing: border-box;
     background-color: transparent; /* Inherit card background */
+    max-height: 500px; /* Add max-height */
 }
 
 /* --- Card Group Styling --- */

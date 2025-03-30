@@ -1,92 +1,419 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const sidebar = document.getElementById('sidebar');
+    const resizer = document.getElementById('resizer');
+    const mainContent = document.getElementById('main-content');
     const columnsContainer = document.getElementById('columnsContainer');
-    let appData = { columns: [], cards: {} }; // { columns: [colId1, colId2], cards: {cardId: { ... }} }
+    const addProjectBtn = document.getElementById('add-project-btn');
+    const projectListContainer = document.getElementById('project-list');
+
+    let projects = {}; // { projectId: { id, title, lastModified, data: { columns: [], cards: {} } } }
+    let activeProjectId = null;
     let draggedCardId = null;
     let dragIndicator = null;
+
     const MIN_COLUMNS = 3;
     const BASE_COLOR_HUE = 200; // Starting Hue for first root card
     const HUE_ROTATION_STEP = 30; // Degrees to shift hue for each subsequent root card
-    const BASE_COLOR_SATURATION = 50; // Adjusted base saturation
-    const BASE_COLOR_LIGHTNESS = 92; // Adjusted base lightness (very light)
-    const LIGHTNESS_STEP_DOWN = 3; // How much darker each level gets
-    const SATURATION_STEP_UP = 3; // How much more saturated each level gets
+    const BASE_COLOR_SATURATION = 50;
+    const BASE_COLOR_LIGHTNESS = 92;
+    const LIGHTNESS_STEP_DOWN = 3;
+    const SATURATION_STEP_UP = 3;
+    const PROJECTS_STORAGE_KEY = 'writingToolProjects';
+    const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
 
-    // --- Data Management ---
+    // --- Project Management ---
 
-    function generateId() {
-        return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
+    function generateId(prefix = 'id_') {
+        return prefix + Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
     }
 
-    function saveData() {
-        try {
-            localStorage.setItem('writingToolData', JSON.stringify(appData));
-        } catch (e) {
-            console.error("Error saving data to localStorage:", e);
-            alert("Could not save data. LocalStorage might be full or disabled.");
+    function createDefaultProject(title = "Untitled Project") {
+        const projectId = generateId('proj_');
+        const defaultColumns = [];
+        for (let i = 0; i < MIN_COLUMNS; i++) {
+            defaultColumns.push({ id: `col-${generateId()}` });
+        }
+        return {
+            id: projectId,
+            title: title,
+            lastModified: Date.now(),
+            data: {
+                columns: defaultColumns,
+                cards: {}
+            }
+        };
+    }
+
+    function addProject() {
+        const title = prompt("Enter a title for the new project:", "New Project");
+        if (title === null) return; // User cancelled
+        const newTitle = title.trim() || "Untitled Project"; // Use default if empty after trimming
+
+        const newProject = createDefaultProject(newTitle);
+        projects[newProject.id] = newProject;
+        switchProject(newProject.id); // Will also save
+        renderProjectList(); // Update sidebar list
+    }
+
+    function deleteProject(projectIdToDelete) {
+        if (!projects[projectIdToDelete]) return;
+        const projectTitle = projects[projectIdToDelete].title;
+
+        if (!confirm(`Are you sure you want to delete the project "${projectTitle}" and all its content? This cannot be undone.`)) {
+            return;
+        }
+
+        const isDeletingActive = activeProjectId === projectIdToDelete;
+        delete projects[projectIdToDelete];
+
+        if (isDeletingActive) {
+            // Find the next project to activate (most recently modified)
+            const remainingProjects = Object.values(projects).sort((a, b) => b.lastModified - a.lastModified);
+            if (remainingProjects.length > 0) {
+                activeProjectId = remainingProjects[0].id;
+            } else {
+                // No projects left, create a new default one
+                const defaultProject = createDefaultProject();
+                projects[defaultProject.id] = defaultProject;
+                activeProjectId = defaultProject.id;
+            }
+        }
+        // If not deleting active, activeProjectId remains the same
+
+        saveProjectsData(); // Save deletion and potentially new active ID
+        renderProjectList(); // Update sidebar
+
+        // If the active project was deleted, load the new active one
+        if (isDeletingActive) {
+            loadActiveProjectData();
+            renderApp();
         }
     }
 
-    function loadData() {
-        const savedData = localStorage.getItem('writingToolData');
-        if (savedData) {
+    function switchProject(newProjectId) {
+        if (!projects[newProjectId] || newProjectId === activeProjectId) {
+            return; // Project doesn't exist or already active
+        }
+
+        // Save current project state before switching (if there was an active project)
+        if (activeProjectId && projects[activeProjectId]) {
+            saveCurrentProjectData(); // Ensure current state is stored
+        }
+
+        activeProjectId = newProjectId;
+        saveActiveProjectId(); // Persist the active project choice
+        loadActiveProjectData(); // Load the new project's data into the working state
+        renderApp(); // Render the main view for the new project
+        renderProjectList(); // Update sidebar highlighting
+        console.log(`Switched to project: ${projects[activeProjectId].title} (${activeProjectId})`);
+    }
+
+    function updateProjectLastModified(projectId = activeProjectId) {
+        if (projectId && projects[projectId]) {
+            projects[projectId].lastModified = Date.now();
+            // No need to re-sort immediately unless the UI needs it *now*.
+            // saveProjectsData will save the new timestamp.
+            // renderProjectList will sort when it runs.
+        }
+    }
+
+    // --- Data Persistence ---
+
+    // Gets the data object for the *currently active* project
+    function getActiveProjectData() {
+        if (!activeProjectId || !projects[activeProjectId]) {
+            console.error("Attempting to get data for invalid or inactive project.");
+            // Fallback to a safe empty structure to prevent errors down the line
+            return { columns: [], cards: {} };
+        }
+        return projects[activeProjectId].data;
+    }
+
+    // Saves the entire projects object to localStorage
+    function saveProjectsData() {
+        try {
+            // Before saving, ensure the current active project's data is up-to-date
+            saveCurrentProjectData();
+            localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+        } catch (e) {
+            console.error("Error saving projects data to localStorage:", e);
+            alert("Could not save project data. LocalStorage might be full or disabled.");
+        }
+    }
+
+    // Saves only the ID of the currently active project
+    function saveActiveProjectId() {
+        if (activeProjectId) {
+            localStorage.setItem(ACTIVE_PROJECT_ID_KEY, activeProjectId);
+        } else {
+            localStorage.removeItem(ACTIVE_PROJECT_ID_KEY);
+        }
+    }
+
+    // Saves the current working state (columns, cards) back into the active project's entry in the main 'projects' object
+    // This should be called before switching projects or saving all data.
+    function saveCurrentProjectData() {
+         if (activeProjectId && projects[activeProjectId]) {
+            // We are already modifying projects[activeProjectId].data directly
+            // via getActiveProjectData(), so this function might seem redundant.
+            // However, it's a good place to ensure the lastModified timestamp is updated.
+            updateProjectLastModified(activeProjectId);
+            // If 'appData' was a separate copy, we'd copy it back here.
+            // Since we operate directly on projects[activeProjectId].data, this is simpler.
+         }
+    }
+
+
+    function loadProjectsData() {
+        const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
+        const savedActiveId = localStorage.getItem(ACTIVE_PROJECT_ID_KEY);
+
+        if (savedProjects) {
             try {
-                const parsedData = JSON.parse(savedData);
-                if (!parsedData || typeof parsedData !== 'object' || !Array.isArray(parsedData.columns) || typeof parsedData.cards !== 'object') {
-                    throw new Error("Invalid data structure");
+                const parsedProjects = JSON.parse(savedProjects);
+                // Basic validation
+                if (parsedProjects && typeof parsedProjects === 'object' && !Array.isArray(parsedProjects)) {
+                     // Further validation for each project could be added here
+                     projects = parsedProjects;
+                     console.log("Projects loaded from localStorage.");
+                } else {
+                    throw new Error("Invalid project data structure");
                 }
-                appData = parsedData;
-                // Recalculate all colors on load to ensure consistency with current logic
-                Object.values(appData.cards).forEach(card => {
-                     // Temporarily remove color so getColorForCard recalculates based on hierarchy
-                     delete card.color;
-                });
-                 Object.values(appData.cards).forEach(card => {
-                     card.color = getColorForCard(card); // Recalculate and assign
-                 });
-                 // Ensure order exists
-                 Object.values(appData.cards).forEach(card => {
-                      if (card.order === undefined) card.order = Date.now() + Math.random(); // Assign order if missing
-                 });
+
+                // Determine active project
+                if (savedActiveId && projects[savedActiveId]) {
+                    activeProjectId = savedActiveId;
+                } else {
+                    // If saved ID is invalid or missing, find the most recently modified
+                    const sortedProjects = Object.values(projects).sort((a, b) => b.lastModified - a.lastModified);
+                    if (sortedProjects.length > 0) {
+                        activeProjectId = sortedProjects[0].id;
+                    }
+                }
 
             } catch (e) {
-                console.error("Error parsing data from localStorage:", e);
-                alert("Could not load saved data. Resetting to default.");
-                localStorage.removeItem('writingToolData');
-                appData = { columns: [], cards: {} };
-                initializeDefaultColumns();
+                console.error("Error parsing projects data from localStorage:", e);
+                alert("Could not load saved project data. Resetting.");
+                localStorage.removeItem(PROJECTS_STORAGE_KEY);
+                localStorage.removeItem(ACTIVE_PROJECT_ID_KEY);
+                projects = {}; // Reset
             }
-        } else {
-            initializeDefaultColumns();
         }
-        renderApp();
+
+        // If no projects loaded or exist after parsing attempt
+        if (Object.keys(projects).length === 0) {
+            console.log("No projects found or loaded, creating default project.");
+            const defaultProject = createDefaultProject();
+            projects[defaultProject.id] = defaultProject;
+            activeProjectId = defaultProject.id;
+            saveProjectsData(); // Save the new default project
+            saveActiveProjectId();
+        } else if (!activeProjectId) {
+            // If projects exist but no active ID could be determined (shouldn't happen often)
+            const sortedProjects = Object.values(projects).sort((a, b) => b.lastModified - a.lastModified);
+             activeProjectId = sortedProjects[0].id;
+             saveActiveProjectId();
+        }
+
+        // Ensure all loaded projects have valid data structure and colors calculated
+        Object.values(projects).forEach(proj => {
+             if (!proj.data || !proj.data.columns || !proj.data.cards) {
+                  console.warn(`Project ${proj.id} has missing data structure, resetting it.`);
+                  const defaultData = createDefaultProject().data;
+                  proj.data = defaultData;
+             }
+             // Recalculate colors on load
+             Object.values(proj.data.cards).forEach(card => delete card.color);
+             Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card, proj.data)); // Pass project data
+             // Ensure order exists
+              Object.values(proj.data.cards).forEach(card => {
+                   if (card.order === undefined) card.order = Date.now() + Math.random();
+              });
+        });
+
+
+        console.log(`Initial active project: ${projects[activeProjectId]?.title} (${activeProjectId})`);
+        loadActiveProjectData(); // Load the data for the determined active project
     }
 
-    function initializeDefaultColumns() {
-        appData.columns = [];
-        appData.cards = {};
-        for (let i = 0; i < MIN_COLUMNS; i++) {
-            addColumnInternal(false);
+    // Loads the active project's data into the working state (if needed, but currently we modify directly)
+    function loadActiveProjectData() {
+        if (!activeProjectId || !projects[activeProjectId]) {
+            console.error("Cannot load data: Active project ID is invalid.");
+            // Optionally, reset to a default state or try to find another project
+            return;
         }
-        saveData();
+        // In the current setup, getActiveProjectData() gives direct access,
+        // so there's no separate 'appData' to load *into*.
+        // This function primarily ensures the activeProjectId is valid before proceeding.
+        console.log(`Loaded data for project: ${projects[activeProjectId].title}`);
     }
 
+
+    // --- Project Sidebar Rendering & Interactions ---
+
+    function renderProjectList() {
+        projectListContainer.innerHTML = ''; // Clear existing list
+        const sortedProjects = Object.values(projects).sort((a, b) => b.lastModified - a.lastModified);
+
+        sortedProjects.forEach(project => {
+            const item = document.createElement('div');
+            item.className = 'project-item';
+            item.dataset.projectId = project.id;
+            if (project.id === activeProjectId) {
+                item.classList.add('active');
+            }
+
+            item.innerHTML = `
+                <span class="project-title" title="${project.title}">${project.title}</span>
+                <div class="project-actions">
+                    <button class="export-project-btn" title="Export Project">📤</button>
+                    <button class="delete-project-btn" title="Delete Project">🗑️</button>
+                </div>
+            `;
+
+            item.addEventListener('click', (e) => {
+                // Prevent switch if clicking on buttons or editing title
+                if (!e.target.closest('button') && !e.target.closest('.project-title-input')) {
+                    switchProject(project.id);
+                }
+            });
+
+            // Title Editing
+            const titleSpan = item.querySelector('.project-title');
+            titleSpan.addEventListener('dblclick', () => makeProjectTitleEditable(project.id, item));
+
+            // Action Buttons
+            item.querySelector('.export-project-btn').addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent project switch
+                exportProject(project.id);
+            });
+            item.querySelector('.delete-project-btn').addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent project switch
+                deleteProject(project.id);
+            });
+
+            projectListContainer.appendChild(item);
+        });
+    }
+
+     function makeProjectTitleEditable(projectId, projectItemElement) {
+        const titleSpan = projectItemElement.querySelector('.project-title');
+        const currentTitle = projects[projectId].title;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentTitle;
+        input.className = 'project-title-input';
+
+        titleSpan.replaceWith(input);
+        input.focus();
+        input.select();
+
+        const finishEditing = (saveChanges) => {
+            const newTitle = input.value.trim();
+            if (saveChanges && newTitle && newTitle !== currentTitle) {
+                projects[projectId].title = newTitle;
+                updateProjectLastModified(projectId);
+                saveProjectsData(); // Save the change
+                 // Update the span content before replacing
+                 titleSpan.textContent = newTitle;
+                 titleSpan.title = newTitle; // Update tooltip
+            } else {
+                // Restore original if cancelled or empty
+                titleSpan.textContent = currentTitle;
+            }
+            input.replaceWith(titleSpan); // Put the span back
+            // No need to call renderProjectList unless order changed,
+            // but we do need to save if title changed.
+        };
+
+        input.addEventListener('blur', () => finishEditing(true));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                finishEditing(true);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                finishEditing(false);
+            }
+        });
+    }
+
+    function exportProject(projectId) {
+        const project = projects[projectId];
+        if (!project) return;
+
+        let content = '';
+        const projectData = project.data;
+
+        function traverse(cardId) {
+            const card = projectData.cards[cardId];
+            if (!card) return;
+
+            // Add current card's content if not empty
+            const cardContent = card.content?.trim();
+            if (cardContent) {
+                content += cardContent + '\n\n'; // Add two newlines between cards
+            }
+
+            // Find children in the next column, sorted by order
+            const children = Object.values(projectData.cards)
+                .filter(c => c.parentId === cardId && c.columnIndex === card.columnIndex + 1)
+                .sort((a, b) => a.order - b.order);
+
+            // Recursively traverse children
+            children.forEach(child => traverse(child.id));
+        }
+
+        // Start traversal from root cards (column 0, no parent), sorted by order
+        const rootCards = Object.values(projectData.cards)
+            .filter(card => card.columnIndex === 0 && !card.parentId)
+            .sort((a, b) => a.order - b.order);
+
+        rootCards.forEach(rootCard => traverse(rootCard.id));
+
+        // Create and download the file
+        const blob = new Blob([content.trim()], { type: 'text/plain;charset=utf-8' });
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = `ProjectExport_${project.title.replace(/\s+/g, '_')}_${timestamp}.txt`;
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+
+        console.log(`Exported project: ${project.title}`);
+    }
+
+    // --- Core Card/Column Logic (Adapted for Active Project) ---
+
+    // Helper to get card from the active project
     function getCard(id) {
-        return appData.cards[id];
+        const projectData = getActiveProjectData();
+        return projectData.cards[id];
     }
 
+    // Helper to get column index (no change needed)
     function getColumnIndex(columnElement) {
         if (!columnElement) return -1;
         return Array.from(columnsContainer.children).indexOf(columnElement);
     }
 
+    // Helper to get root cards for the active project's column
     function getColumnCards(columnIndex) {
-        return Object.values(appData.cards)
+        const projectData = getActiveProjectData();
+        return Object.values(projectData.cards)
                .filter(card => card.columnIndex === columnIndex && !card.parentId)
                .sort((a, b) => a.order - b.order);
     }
 
+    // Helper to get child cards for the active project
     function getChildCards(parentId, targetColumnIndex = null) {
-        let children = Object.values(appData.cards)
+        const projectData = getActiveProjectData();
+        let children = Object.values(projectData.cards)
                          .filter(card => card.parentId === parentId);
         if (targetColumnIndex !== null) {
             children = children.filter(card => card.columnIndex === targetColumnIndex);
@@ -94,130 +421,134 @@ document.addEventListener('DOMContentLoaded', () => {
         return children.sort((a, b) => a.order - b.order);
     }
 
-    function getCardElement(cardId) {
-        return document.getElementById(`card-${cardId}`);
-    }
+    // Helper to get descendant IDs for the active project
+     function getDescendantIds(cardId) {
+         const projectData = getActiveProjectData();
+         let descendants = [];
+         const directChildren = Object.values(projectData.cards).filter(card => card.parentId === cardId);
+         directChildren.forEach(child => {
+             descendants.push(child.id);
+             descendants = descendants.concat(getDescendantIds(child.id)); // Recursive call uses the same active project context
+         });
+         return descendants;
+     }
 
-    function getGroupElement(parentId) {
-         return document.getElementById(`group-${parentId}`);
-    }
+     // Helper to get ancestor IDs for the active project
+     function getAncestorIds(cardId) {
+         const projectData = getActiveProjectData();
+         let ancestors = [];
+         let currentCard = projectData.cards[cardId]; // Use projectData
+         while (currentCard && currentCard.parentId) {
+             ancestors.push(currentCard.parentId);
+             currentCard = projectData.cards[currentCard.parentId]; // Use projectData
+         }
+         return ancestors;
+     }
 
-    function getColumnElementByIndex(index) {
-        if (index < 0 || index >= columnsContainer.children.length) return null;
-        return columnsContainer.children[index];
-    }
+    // --- Color Calculation (Adapted) ---
+    // Now requires projectData to access relevant cards for calculation
+    function getColorForCard(card, projectData = getActiveProjectData()) {
+        if (!card) return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
 
-    function getDescendantIds(cardId) {
-        let descendants = [];
-        const directChildren = Object.values(appData.cards).filter(card => card.parentId === cardId);
-        directChildren.forEach(child => {
-            descendants.push(child.id);
-            descendants = descendants.concat(getDescendantIds(child.id));
-        });
-        return descendants;
-    }
+        const getCards = (colIdx) => Object.values(projectData.cards)
+            .filter(c => c.columnIndex === colIdx && !c.parentId)
+            .sort((a, b) => a.order - b.order);
+        const getParent = (pId) => projectData.cards[pId];
 
-    function getAncestorIds(cardId) {
-        let ancestors = [];
-        let currentCard = getCard(cardId);
-        while (currentCard && currentCard.parentId) {
-            ancestors.push(currentCard.parentId);
-            currentCard = getCard(currentCard.parentId);
-        }
-        return ancestors;
-    }
-
-    // --- Color Calculation (REVISED) ---
-    function getColorForCard(card) {
-        if (!card) return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`; // Default fallback
-
-        if (card.columnIndex === 0 && !card.parentId) { // Is a Root Card?
-            const rootCards = getColumnCards(0); // Sorted by order
+        if (card.columnIndex === 0 && !card.parentId) { // Root Card
+            const rootCards = getCards(0);
             const rootIndex = rootCards.findIndex(c => c.id === card.id);
-            const hue = (BASE_COLOR_HUE + (rootIndex >= 0 ? rootIndex : 0) * HUE_ROTATION_STEP) % 360; // Rotate hue
+            const hue = (BASE_COLOR_HUE + (rootIndex >= 0 ? rootIndex : 0) * HUE_ROTATION_STEP) % 360;
             return `hsl(${hue}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
 
-        } else if (card.parentId) { // Is a Child Card?
-            const parentCard = getCard(card.parentId);
+        } else if (card.parentId) { // Child Card
+            const parentCard = getParent(card.parentId);
             if (!parentCard) {
                  console.warn(`Parent card ${card.parentId} not found for card ${card.id}. Using default color.`);
                  return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - LIGHTNESS_STEP_DOWN}%)`;
             }
 
-            // Get parent's calculated color (recalculate if missing, though it should exist)
-            const parentColor = parentCard.color || getColorForCard(parentCard);
+            // Ensure parent color is calculated if missing (pass projectData down)
+            const parentColor = parentCard.color || getColorForCard(parentCard, projectData);
 
             try {
                 const match = parentColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
                 if (match) {
-                    let [, h, s, l] = match.map(Number); // Keep parent's Hue (h)
-                    // Darken and saturate relative to parent
-                    const newLightness = Math.max(15, l - LIGHTNESS_STEP_DOWN); // Ensure minimum lightness
+                    let [, h, s, l] = match.map(Number);
+                    const newLightness = Math.max(15, l - LIGHTNESS_STEP_DOWN);
                     const newSaturation = Math.min(100, s + SATURATION_STEP_UP);
                     return `hsl(${h}, ${newSaturation}%, ${newLightness}%)`;
                 } else {
-                     console.warn(`Could not parse parent color ${parentColor}. Using fallback darkening.`);
-                     // Fallback: Darken the default base color based on estimated level
-                     let level = getCardDepth(card.id);
+                     console.warn(`Could not parse parent color ${parentColor}. Using fallback.`);
+                     let level = getCardDepth(card.id, projectData);
                      const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
                      const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
-                     return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`; // Use default hue
+                     return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
                 }
             } catch (e) {
                  console.error("Error processing parent color:", e);
-                 let level = getCardDepth(card.id);
+                 let level = getCardDepth(card.id, projectData);
                  const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
                  const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
                  return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
             }
         } else {
-             // Card in col > 0 but no parent? Should not happen.
-             console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent. Using default color.`);
+             console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent. Using default.`);
              return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
         }
     }
 
-    // Helper to get card depth for fallback color calculation
-    function getCardDepth(cardId) {
+    // Helper to get card depth (Adapted)
+    function getCardDepth(cardId, projectData = getActiveProjectData()) {
          let level = 0;
-         let currentCard = getCard(cardId);
+         let currentCard = projectData.cards[cardId];
          while (currentCard && currentCard.parentId) {
              level++;
-             currentCard = getCard(currentCard.parentId);
+             currentCard = projectData.cards[currentCard.parentId];
          }
          return level;
     }
 
-
+    // No change needed for getHighlightColor
     function getHighlightColor(baseColor) {
         try {
             const match = baseColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
             if (match) {
                 const [, h, s, l] = match.map(Number);
-                const highlightL = Math.max(10, l - 5); // Darker
-                const highlightS = Math.min(100, s + 5); // More saturated
+                const highlightL = Math.max(10, l - 5);
+                const highlightS = Math.min(100, s + 5);
                 return `hsl(${h}, ${highlightS}%, ${highlightL}%)`;
             }
         } catch (e) { console.warn("Could not parse color for highlight:", baseColor); }
-        return 'rgba(0, 0, 0, 0.15)'; // Fallback
+        return 'rgba(0, 0, 0, 0.15)';
     }
 
+    // --- DOM Manipulation & Rendering (Adapted for Active Project) ---
 
-    // --- DOM Manipulation & Rendering ---
+    function getCardElement(cardId) {
+        return document.getElementById(`card-${cardId}`);
+    }
+    function getGroupElement(parentId) {
+         return document.getElementById(`group-${parentId}`);
+    }
+    function getColumnElementByIndex(index) {
+        if (index < 0 || index >= columnsContainer.children.length) return null;
+        return columnsContainer.children[index];
+    }
 
-    // REVISED: Create Card Element - Drag handle limited to header
+    // REVISED: Create Card Element - Uses active project context for color
     function createCardElement(card) {
         const cardEl = document.createElement('div');
         cardEl.id = `card-${card.id}`;
         cardEl.className = 'card';
-        // cardEl.draggable = false; // Card itself is NOT draggable
         cardEl.dataset.cardId = card.id;
-        // Ensure color is calculated and applied
-        card.color = card.color || getColorForCard(card); // Recalculate if missing
+
+        // Ensure color is calculated based on the *active* project's data
+        card.color = card.color || getColorForCard(card); // getColorForCard uses getActiveProjectData by default
         cardEl.style.backgroundColor = card.color;
 
         cardEl.innerHTML = `
-            <div class="card-header" draggable="true"> <!-- Header IS draggable -->
+            <div class="card-header" draggable="true">
                 <span class="card-id">#${card.id.slice(-4)}</span>
                 <div class="card-actions">
                     <button class="add-child-btn" title="Add Child Card">+</button>
@@ -230,21 +561,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const headerEl = cardEl.querySelector('.card-header');
         const textarea = cardEl.querySelector('.card-content');
 
-        // Drag listeners attached to HEADER
         headerEl.addEventListener('dragstart', handleDragStart);
-        headerEl.addEventListener('dragend', handleDragEnd); // dragend fires on the source element
+        headerEl.addEventListener('dragend', handleDragEnd);
 
-        // Drop-related listeners remain on the card element (as a drop target)
         cardEl.addEventListener('dragenter', (e) => {
-             if (e.target.closest('.card') === cardEl) {
-                 e.stopPropagation();
-             }
+             if (e.target.closest('.card') === cardEl) e.stopPropagation();
              handleDragEnter(e);
         });
-         cardEl.addEventListener('dragleave', handleDragLeave);
-         // Note: 'drop' and 'dragover' are handled by parent containers (group/cards-container)
+        cardEl.addEventListener('dragleave', handleDragLeave);
 
-        // Other listeners
         textarea.addEventListener('blur', handleTextareaBlur);
         textarea.addEventListener('focus', handleTextareaFocus);
         textarea.addEventListener('input', autoResizeTextarea);
@@ -262,8 +587,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return cardEl;
     }
 
+    // REVISED: Create Group Element - Uses active project context
     function createGroupElement(parentId) {
-        const parentCard = getCard(parentId);
+        const parentCard = getCard(parentId); // Uses active project data
         if (!parentCard) return null;
 
         const groupEl = document.createElement('div');
@@ -283,6 +609,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return groupEl;
     }
 
+    // REVISED: Create Column Element - Uses active project context for handlers
     function createColumnElement(columnIndex) {
         const columnEl = document.createElement('div');
         columnEl.className = 'column';
@@ -303,42 +630,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cardsContainer = columnEl.querySelector('.cards-container');
 
-        columnEl.querySelector('.add-card-btn').addEventListener('click', () => addCard(columnIndex, null));
-        columnEl.querySelector('.add-column-btn').addEventListener('click', addColumn);
-        columnEl.querySelector('.delete-column-btn').addEventListener('click', () => deleteColumn(columnIndex));
+        columnEl.querySelector('.add-card-btn').addEventListener('click', () => addCard(columnIndex, null)); // addCard uses active project
+        columnEl.querySelector('.add-column-btn').addEventListener('click', addColumn); // addColumn uses active project
+        columnEl.querySelector('.delete-column-btn').addEventListener('click', () => deleteColumn(columnIndex)); // deleteColumn uses active project
 
         cardsContainer.addEventListener('dblclick', (e) => {
              if (e.target === cardsContainer && columnIndex === 0) {
-                 addCard(columnIndex, null);
+                 addCard(columnIndex, null); // addCard uses active project
              }
         });
 
         cardsContainer.addEventListener('dragover', handleDragOver);
         cardsContainer.addEventListener('dragenter', handleDragEnter);
         cardsContainer.addEventListener('dragleave', handleDragLeave);
-        cardsContainer.addEventListener('drop', handleDrop);
+        cardsContainer.addEventListener('drop', handleDrop); // handleDrop uses active project
 
         return columnEl;
     }
 
+    // REVISED: Render Column Content - Uses active project data
     function renderColumnContent(columnEl, columnIndex) {
         const cardsContainer = columnEl.querySelector('.cards-container');
         cardsContainer.innerHTML = '';
+        const projectData = getActiveProjectData();
 
         // Render Groups first
         if (columnIndex > 0) {
-            const potentialParentCards = Object.values(appData.cards)
+            const potentialParentCards = Object.values(projectData.cards)
                 .filter(card => card.columnIndex === columnIndex - 1)
                 .sort((a, b) => a.order - b.order);
 
             potentialParentCards.forEach(parentCard => {
-                 const groupEl = createGroupElement(parentCard.id);
+                 const groupEl = createGroupElement(parentCard.id); // Uses active project context
                  if (!groupEl) return;
 
-                 const childCards = getChildCards(parentCard.id, columnIndex);
+                 const childCards = getChildCards(parentCard.id, columnIndex); // Uses active project
 
                  childCards.forEach(childCard => {
-                     const cardEl = createCardElement(childCard); // Will ensure color is correct
+                     const cardEl = createCardElement(childCard); // Uses active project context for color
                      groupEl.appendChild(cardEl);
                  });
                  cardsContainer.appendChild(groupEl);
@@ -346,129 +675,137 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Render Root Cards for this column
-        const rootCardsInColumn = getColumnCards(columnIndex); // Already sorted
+        const rootCardsInColumn = getColumnCards(columnIndex); // Uses active project
 
         rootCardsInColumn.forEach(card => {
-            const cardEl = createCardElement(card); // Will ensure color is correct
+            const cardEl = createCardElement(card); // Uses active project context for color
             cardsContainer.appendChild(cardEl);
         });
 
-        updateToolbarButtons(columnEl, columnIndex);
+        updateToolbarButtons(columnEl, columnIndex); // Uses active project data implicitly
     }
 
+    // REVISED: Render App - Renders the active project
     function renderApp() {
         columnsContainer.innerHTML = '';
+        const projectData = getActiveProjectData();
+
+        if (!projectData) {
+            console.error("Cannot render app: No active project data found.");
+            // Handle this case - maybe show an error message or default screen
+             columnsContainer.innerHTML = '<p style="padding: 20px; text-align: center;">Error: No project selected or project data is corrupted.</p>';
+             return;
+        }
 
         let maxColumnIndex = MIN_COLUMNS - 1;
-        Object.values(appData.cards).forEach(card => {
+        Object.values(projectData.cards).forEach(card => {
              maxColumnIndex = Math.max(maxColumnIndex, card.columnIndex);
         });
 
-        while (appData.columns.length <= maxColumnIndex) {
-             addColumnInternal(false);
+        // Ensure the project's column array has enough entries
+        while (projectData.columns.length <= maxColumnIndex) {
+             // Use addColumnInternal which now works on the active project
+             addColumnInternal(false); // Don't save immediately, renderApp conclusion will trigger save
         }
 
-        const columnsToRenderCount = Math.max(MIN_COLUMNS, appData.columns.length);
+        const columnsToRenderCount = Math.max(MIN_COLUMNS, projectData.columns.length);
 
         for (let i = 0; i < columnsToRenderCount; i++) {
-             const columnEl = createColumnElement(i);
+             const columnEl = createColumnElement(i); // Uses active project context for handlers
              columnsContainer.appendChild(columnEl);
-             renderColumnContent(columnEl, i);
+             renderColumnContent(columnEl, i); // Uses active project data
         }
 
-        updateAllToolbarButtons();
-        console.log("App rendered.");
+        updateAllToolbarButtons(); // Uses active project data implicitly
+        console.log(`App rendered for project: ${projects[activeProjectId]?.title}`);
     }
 
-
+    // REVISED: Update Toolbar Buttons - Uses active project data
     function updateToolbarButtons(columnEl, columnIndex) {
          const addCardBtn = columnEl.querySelector('.add-card-btn');
          const addColBtn = columnEl.querySelector('.add-column-btn');
          const delColBtn = columnEl.querySelector('.delete-column-btn');
-         const numColumns = columnsContainer.children.length;
+         const numColumns = columnsContainer.children.length; // Based on current DOM
          const isRightmost = columnIndex === numColumns - 1;
+         const projectData = getActiveProjectData();
 
          addCardBtn.classList.toggle('hidden', columnIndex !== 0);
          addColBtn.classList.toggle('hidden', !isRightmost);
 
-         const columnCards = Object.values(appData.cards).filter(card => card.columnIndex === columnIndex);
-         const canDelete = isRightmost && numColumns > MIN_COLUMNS && columnCards.length === 0;
+         const columnCards = Object.values(projectData.cards).filter(card => card.columnIndex === columnIndex);
+         // Use projectData.columns.length for minimum check
+         const canDelete = isRightmost && projectData.columns.length > MIN_COLUMNS && columnCards.length === 0;
          delColBtn.classList.toggle('hidden', !canDelete);
          delColBtn.disabled = !canDelete;
     }
 
+    // No change needed for autoResizeTextarea
     function autoResizeTextarea(event) {
         const textarea = event.target;
         textarea.style.height = 'auto';
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 500)}px`;
+        // Use computed height to avoid jumps if scrollHeight is temporarily large
+        const computedHeight = window.getComputedStyle(textarea).height;
+        textarea.style.height = computedHeight; // Set explicit height before recalculating
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 500)}px`; // 500px max height
     }
 
-    // --- Event Handlers ---
+    // --- Event Handlers (Adapted for Active Project where necessary) ---
 
+    // REVISED: handleTextareaBlur - Saves to active project
     function handleTextareaBlur(event) {
         const textarea = event.target;
         const cardEl = textarea.closest('.card');
         if (!cardEl) return;
         const cardId = cardEl.dataset.cardId;
-        const card = getCard(cardId);
+        const card = getCard(cardId); // Uses active project data
 
         if (card && card.content !== textarea.value) {
             card.content = textarea.value;
-            saveData();
-            console.log(`Card ${cardId} content saved.`);
+            updateProjectLastModified(); // Mark project as modified
+            saveProjectsData(); // Save all project data (includes the modification)
+            console.log(`Card ${cardId} content saved in project ${activeProjectId}.`);
         }
         cardEl.classList.remove('editing');
         clearHighlights();
     }
 
+    // REVISED: handleTextareaFocus - Uses active project data for highlighting
     function handleTextareaFocus(event) {
          const textarea = event.target;
          const cardEl = textarea.closest('.card');
          const cardId = cardEl.dataset.cardId;
 
          cardEl.classList.add('editing');
-         highlightHierarchy(cardId);
+         highlightHierarchy(cardId); // Uses active project data implicitly
     }
 
+    // REVISED: highlightHierarchy - Uses active project data
     function highlightHierarchy(cardId) {
         clearHighlights(); // Clear previous highlights first
+        const projectData = getActiveProjectData();
 
-        const targetCard = getCard(cardId);
+        const targetCard = projectData.cards[cardId];
         if (!targetCard) return;
 
-        const ancestors = getAncestorIds(cardId);
-        const descendants = getDescendantIds(cardId);
+        const ancestors = getAncestorIds(cardId); // Uses active project data
+        const descendants = getDescendantIds(cardId); // Uses active project data
         const allToHighlight = [cardId, ...ancestors, ...descendants];
 
         allToHighlight.forEach(id => {
             const cardEl = getCardElement(id);
-            const cardData = getCard(id); // Get the card's data object
+            const cardData = projectData.cards[id]; // Get data from active project
 
-            if (cardEl && cardData) { // Ensure both the element and its data exist
+            if (cardEl && cardData) {
                 cardEl.classList.add('highlight');
-
-                // *** CORRECTED PART ***
-                // Always get the definitive base color, preferably from storage, fallback to calculation
                 let baseColor = cardData.color;
                 if (!baseColor) {
-                    // If color isn't stored (shouldn't happen often after load/add/move), calculate and store it
-                    baseColor = getColorForCard(cardData);
+                    baseColor = getColorForCard(cardData); // Recalculate using active project context
                     cardData.color = baseColor; // Store the calculated color
-                    console.warn(`Recalculated and stored missing color for card ${id} during highlight.`);
                 }
-
-                // Calculate highlight color based *only* on the base color
                 const highlightBg = getHighlightColor(baseColor);
-
-                // Apply the calculated highlight color
                 cardEl.style.backgroundColor = highlightBg;
-
-                // Debugging log: Check baseColor and highlightBg
-                // console.log(`Highlighting Card ${id}: Base='${baseColor}', Highlight='${highlightBg}'`);
-
             }
 
-            // Highlight the corresponding group header if it's a parent/ancestor
             const groupEl = getGroupElement(id);
             if (groupEl) {
                 groupEl.classList.add('highlight');
@@ -476,124 +813,102 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // REVISED: clearHighlights - Uses active project data
     function clearHighlights() {
         document.querySelectorAll('.card.highlight, .card.editing, .card-group.highlight').forEach(el => {
             el.classList.remove('highlight', 'editing');
             if (el.classList.contains('card')) {
                 const cardId = el.dataset.cardId;
-                const card = getCard(cardId);
-                // Restore the definitive base color from the card data
+                const card = getCard(cardId); // Uses active project data
                 if(card && card.color) {
                     el.style.backgroundColor = card.color;
                 } else if (card) {
-                    // Fallback if color somehow got removed from data - recalculate
-                    el.style.backgroundColor = getColorForCard(card);
+                    el.style.backgroundColor = getColorForCard(card); // Recalculate
                 } else {
-                    // Fallback if card data is gone
-                    el.style.backgroundColor = '';
+                    el.style.backgroundColor = ''; // Fallback
                 }
             }
-            // No background color change needed for group headers, just remove class
         });
     }
 
-    // REVISED: handleDragStart - Expects event target to be the header
-    function handleDragStart(event) {
-        // Ensure drag starts on the header, not internal elements like buttons
-        if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
-            event.preventDefault();
-            return;
-        }
+    // Drag handlers (handleDragStart, handleDragEnd, handleDragOver, handleDragEnter, handleDragLeave, handleDrop, clearDragStyles)
+    // generally don't need direct project data access during the drag itself, as they operate on the DOM elements
+    // created by renderApp for the *active* project. The drop handler will use project-aware functions (getCard, moveCard)
+    // when the drop occurs.
 
+    // --- Drag & Drop Handlers (Mostly Unchanged Logic, Context is Active Project) ---
+    function handleDragStart(event) {
+        if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+            event.preventDefault(); return;
+        }
         const headerEl = event.target.closest('.card-header');
         const cardEl = headerEl ? headerEl.closest('.card') : null;
-
-        if (!cardEl) {
-            event.preventDefault(); // Should not happen if listener is correct, but safeguard
-            return;
-        }
+        if (!cardEl) { event.preventDefault(); return; }
 
         draggedCardId = cardEl.dataset.cardId;
+        // Check if the card actually exists in the current project before proceeding
+        if (!getCard(draggedCardId)) {
+             console.warn(`DragStart aborted: Card ${draggedCardId} not found in active project.`);
+             event.preventDefault();
+             draggedCardId = null;
+             return;
+        }
+
         event.dataTransfer.setData('text/plain', draggedCardId);
         event.dataTransfer.effectAllowed = 'move';
-
-        requestAnimationFrame(() => {
-            // Add dragging class to the *card* element for visual feedback
-            cardEl.classList.add('dragging');
-        });
-
+        requestAnimationFrame(() => cardEl.classList.add('dragging'));
         if (!dragIndicator) {
             dragIndicator = document.createElement('div');
             dragIndicator.className = 'drag-over-indicator';
             dragIndicator.style.display = 'none';
             document.body.appendChild(dragIndicator);
         }
-        console.log(`Drag Start: ${draggedCardId}`);
+        console.log(`Drag Start: ${draggedCardId} (Project: ${activeProjectId})`);
     }
 
-    // REVISED: handleDragEnd - Expects event target to be the header
     function handleDragEnd(event) {
         if (draggedCardId) {
             const cardEl = getCardElement(draggedCardId);
-            if (cardEl) {
-                // Remove dragging class from the *card* element
-                cardEl.classList.remove('dragging');
-            }
+            if (cardEl) cardEl.classList.remove('dragging');
         }
         clearDragStyles();
         draggedCardId = null;
         console.log("Drag End");
     }
 
-    // --- DragOver, DragEnter, DragLeave, Drop handlers remain largely the same ---
-    // They operate on potential drop targets (cards, groups, containers)
-    // and don't depend on where the drag *started* from initially.
-
     function handleDragOver(event) {
         event.preventDefault();
-        event.dataTransfer.dropEffect = 'move';
+        if (!draggedCardId) return; // Ensure a drag is in progress *within this project*
 
-        if (!draggedCardId) return;
+        event.dataTransfer.dropEffect = 'move';
 
         const targetElement = event.target;
         const targetCard = targetElement.closest('.card');
         const targetGroup = targetElement.closest('.card-group');
         const targetCardsContainer = targetElement.closest('.cards-container');
 
-        clearDragStyles(false);
+        clearDragStyles(false); // Don't remove indicator instance yet
 
         let validDropTarget = false;
         let indicatorParent = null;
         let indicatorNextSibling = null;
 
-        // Constraint: Cannot drop near the card being dragged
+        // Constraints (using active project context via getCard)
         if (targetCard && targetCard.dataset.cardId === draggedCardId) {
-             validDropTarget = false; // Hovering over self, invalid drop zone
-             // Optionally hide indicator explicitly here if needed
+             validDropTarget = false;
              if (dragIndicator) dragIndicator.style.display = 'none';
         }
-        // Hovering over another card (for reordering)
         else if (targetCard) {
             const rect = targetCard.getBoundingClientRect();
             const midway = rect.top + rect.height / 2;
             const parentContainer = targetCard.parentNode;
-
             targetCard.classList.add('drag-over-card');
-
-             if (event.clientY < midway) {
-                 indicatorParent = parentContainer;
-                 indicatorNextSibling = targetCard;
-             } else {
-                 indicatorParent = parentContainer;
-                 indicatorNextSibling = targetCard.nextSibling;
-             }
-             validDropTarget = true;
-
+            indicatorParent = parentContainer;
+            indicatorNextSibling = (event.clientY < midway) ? targetCard : targetCard.nextSibling;
+            validDropTarget = true;
         } else if (targetGroup) {
-            // Hovering over a card group
             const groupParentId = targetGroup.dataset.parentId;
-            // Constraint: Cannot drop into own child group
-            if (groupParentId === draggedCardId) {
+            if (groupParentId === draggedCardId) { // Cannot drop into own descendants group
                  validDropTarget = false;
                  if (dragIndicator) dragIndicator.style.display = 'none';
             } else {
@@ -602,65 +917,44 @@ document.addEventListener('DOMContentLoaded', () => {
                  const cardsInGroup = Array.from(targetGroup.querySelectorAll('.card'));
                  let closestCard = null;
                  let smallestDistance = Infinity;
-
                  cardsInGroup.forEach(card => {
                      const rect = card.getBoundingClientRect();
                      const dist = Math.abs(event.clientY - (rect.top + rect.height / 2));
-                     if (dist < smallestDistance) {
-                         smallestDistance = dist;
-                         closestCard = card;
-                     }
+                     if (dist < smallestDistance) { smallestDistance = dist; closestCard = card; }
                  });
-
                  if (closestCard) {
                       const rect = closestCard.getBoundingClientRect();
-                      if (event.clientY < rect.top + rect.height / 2) {
-                           indicatorParent = targetGroup;
-                           indicatorNextSibling = closestCard;
-                      } else {
-                           indicatorParent = targetGroup;
-                           indicatorNextSibling = closestCard.nextSibling;
-                      }
+                      indicatorParent = targetGroup;
+                      indicatorNextSibling = (event.clientY < rect.top + rect.height / 2) ? closestCard : closestCard.nextSibling;
                  } else {
                       const header = targetGroup.querySelector('.group-header');
                       indicatorParent = targetGroup;
-                      indicatorNextSibling = header ? header.nextSibling : targetGroup.firstChild;
+                      indicatorNextSibling = header ? header.nextSibling : targetGroup.firstChild; // Insert at top if empty
                  }
             }
-
         } else if (targetCardsContainer) {
-            // Hovering over empty space in a column's card container
             const columnEl = targetCardsContainer.closest('.column');
             const columnIndex = getColumnIndex(columnEl);
-            const draggedCardIsRoot = !getCard(draggedCardId)?.parentId;
+            const draggedCardData = getCard(draggedCardId); // Get data for check
+            const draggedCardIsRoot = draggedCardData && !draggedCardData.parentId;
 
-            // Allow dropping as root card only in first column OR if moving an existing root card
-            if (columnIndex === 0 || draggedCardIsRoot) {
+            // Allow dropping as root card only in first column OR if moving an existing root card between columns
+            if (draggedCardData && (columnIndex === 0 || draggedCardIsRoot)) {
                  targetCardsContainer.classList.add('drag-over-empty');
                  validDropTarget = true;
                  const children = Array.from(targetCardsContainer.children).filter(el => el.matches('.card, .card-group'));
                  let closestElement = null;
                  let smallestDistance = Infinity;
-
                  children.forEach(el => {
-                     if(el.dataset.cardId === draggedCardId) return; // Skip self
+                     if(el.dataset.cardId === draggedCardId || el.dataset.parentId === draggedCardId) return; // Skip self or own group
                      const rect = el.getBoundingClientRect();
                      const dist = Math.abs(event.clientY - (rect.top + rect.height / 2));
-                     if (dist < smallestDistance) {
-                         smallestDistance = dist;
-                         closestElement = el;
-                     }
+                     if (dist < smallestDistance) { smallestDistance = dist; closestElement = el; }
                  });
-
                  if (closestElement) {
                      const rect = closestElement.getBoundingClientRect();
-                     if (event.clientY < rect.top + rect.height / 2) {
-                         indicatorParent = targetCardsContainer;
-                         indicatorNextSibling = closestElement;
-                     } else {
-                         indicatorParent = targetCardsContainer;
-                         indicatorNextSibling = closestElement.nextSibling;
-                     }
+                     indicatorParent = targetCardsContainer;
+                     indicatorNextSibling = (event.clientY < rect.top + rect.height / 2) ? closestElement : closestElement.nextSibling;
                  } else {
                      indicatorParent = targetCardsContainer;
                      indicatorNextSibling = null; // Append
@@ -674,11 +968,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (validDropTarget && indicatorParent) {
-             if(indicatorNextSibling) {
-                 indicatorParent.insertBefore(dragIndicator, indicatorNextSibling);
-             } else {
-                 indicatorParent.appendChild(dragIndicator);
-             }
+             if(indicatorNextSibling) indicatorParent.insertBefore(dragIndicator, indicatorNextSibling);
+             else indicatorParent.appendChild(dragIndicator);
              dragIndicator.style.display = 'block';
         } else {
              if(dragIndicator) dragIndicator.style.display = 'none';
@@ -688,78 +979,61 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleDragEnter(event) {
         event.preventDefault();
         event.stopPropagation();
+        if (!draggedCardId) return; // Ignore if not dragging
 
         const targetGroup = event.target.closest('.card-group');
         const targetCardsContainer = event.target.closest('.cards-container');
         const targetCard = event.target.closest('.card');
 
-        if (targetCard && targetCard.dataset.cardId === draggedCardId) return; // No highlight on self enter
-        if (targetGroup && targetGroup.dataset.parentId === draggedCardId) return; // No highlight on own group enter
+        if (targetCard && targetCard.dataset.cardId === draggedCardId) return;
+        if (targetGroup && targetGroup.dataset.parentId === draggedCardId) return;
 
-
-         if (targetGroup) {
-            targetGroup.classList.add('drag-over-group');
-         } else if (targetCardsContainer) {
-             targetCardsContainer.classList.add('drag-over-empty');
-         } else if (targetCard) {
-             targetCard.classList.add('drag-over-card');
-         }
+         if (targetGroup) targetGroup.classList.add('drag-over-group');
+         else if (targetCardsContainer) targetCardsContainer.classList.add('drag-over-empty');
+         else if (targetCard) targetCard.classList.add('drag-over-card');
     }
 
     function handleDragLeave(event) {
          event.stopPropagation();
-        const relatedTarget = event.relatedTarget;
-        const currentTarget = event.currentTarget; // Element the listener is attached to
+         if (!draggedCardId) return;
 
-        // Check if leaving the element the listener is on, or one of its valid drop target children
-         const leavingValidTarget = currentTarget.classList.contains('card') ||
-                                 currentTarget.classList.contains('card-group') ||
-                                 currentTarget.classList.contains('cards-container');
+        const relatedTarget = event.relatedTarget;
+        const currentTarget = event.currentTarget;
+        const leavingValidTarget = currentTarget.matches('.card, .card-group, .cards-container');
 
         if (leavingValidTarget && (!relatedTarget || !currentTarget.contains(relatedTarget))) {
              currentTarget.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty');
-
-              // Hide indicator only if leaving a container where it was shown AND moving outside it
               if (dragIndicator && dragIndicator.parentNode === currentTarget && !currentTarget.contains(relatedTarget)) {
                    dragIndicator.style.display = 'none';
               }
         }
-        // Also clear children if leaving container
-         if (currentTarget.classList.contains('cards-container') || currentTarget.classList.contains('card-group')) {
-            if (!currentTarget.contains(relatedTarget)) { // If mouse truly left the container
+         if (currentTarget.matches('.cards-container, .card-group')) {
+            if (!currentTarget.contains(relatedTarget)) {
                 currentTarget.querySelectorAll('.drag-over-card, .drag-over-group, .drag-over-empty')
                     .forEach(el => el.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty'));
             }
          }
     }
 
+    // REVISED: handleDrop - Uses active project context via moveCard
     function handleDrop(event) {
         event.preventDefault();
         event.stopPropagation();
-
         console.log("Drop event fired");
 
         const droppedCardId = event.dataTransfer.getData('text/plain');
         if (!droppedCardId || !draggedCardId || droppedCardId !== draggedCardId) {
             console.warn("Drop aborted: Mismatched or missing card ID.");
-            clearDragStyles();
-            draggedCardId = null;
-            return;
+            clearDragStyles(); draggedCardId = null; return;
         }
-
-        const droppedCard = getCard(droppedCardId);
+        const droppedCard = getCard(droppedCardId); // Check in active project
         if (!droppedCard) {
-             console.error("Drop aborted: Dragged card data not found.");
-             clearDragStyles();
-             draggedCardId = null;
-             return;
+             console.error("Drop aborted: Dragged card data not found in active project.");
+             clearDragStyles(); draggedCardId = null; return;
         }
-
         if (!dragIndicator || dragIndicator.style.display === 'none' || !dragIndicator.parentNode) {
-            console.warn("Drop aborted: No valid drop indicator position found.");
-            clearDragStyles();
-            draggedCardId = null;
-            return;
+            console.warn("Drop aborted: No valid drop indicator position.");
+            clearDragStyles(); draggedCardId = null; return;
         }
 
         const indicatorParent = dragIndicator.parentNode;
@@ -772,9 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetColumnEl = indicatorParent.closest('.column');
         if (!targetColumnEl) {
              console.warn("Drop aborted: Indicator not within a column.");
-             clearDragStyles();
-             draggedCardId = null;
-             return;
+             clearDragStyles(); draggedCardId = null; return;
         }
         targetColumnIndex = getColumnIndex(targetColumnEl);
 
@@ -782,26 +1054,18 @@ document.addEventListener('DOMContentLoaded', () => {
              newParentId = indicatorParent.dataset.parentId;
              if (newParentId === droppedCardId) {
                  console.warn("Drop aborted: Cannot drop into own child group (final check).");
-                 clearDragStyles();
-                 draggedCardId = null;
-                 return;
+                 clearDragStyles(); draggedCardId = null; return;
              }
         } else if (indicatorParent.classList.contains('cards-container')) {
-            // Dropped directly into a column's main container
-            newParentId = null; // Assume root unless specific logic dictates otherwise
-            // Ensure this is allowed (col 0 or moving existing root)
+            newParentId = null;
             const draggedCardIsRoot = !droppedCard.parentId;
             if(targetColumnIndex > 0 && !draggedCardIsRoot) {
                  console.warn(`Drop aborted: Cannot drop non-root card into empty space of column ${targetColumnIndex}.`);
-                 clearDragStyles();
-                 draggedCardId = null;
-                 return;
+                 clearDragStyles(); draggedCardId = null; return;
             }
         } else {
-            console.warn("Drop aborted: Indicator parent is neither group nor container.", indicatorParent);
-            clearDragStyles();
-            draggedCardId = null;
-            return;
+            console.warn("Drop aborted: Indicator parent is not group or container.", indicatorParent);
+            clearDragStyles(); draggedCardId = null; return;
         }
 
         if (insertBeforeElement && insertBeforeElement.classList.contains('card')) {
@@ -813,19 +1077,17 @@ document.addEventListener('DOMContentLoaded', () => {
              insertBeforeCardId = null; // Append
         }
 
-        // Final check: ensure we are not inserting relative to self if somehow indicator ended up there
         if (insertBeforeCardId === droppedCardId) {
              console.warn("Drop aborted: Attempting to insert relative to self.");
-              clearDragStyles();
-              draggedCardId = null;
-              return;
+             clearDragStyles(); draggedCardId = null; return;
         }
 
-        console.log(`Drop details: Card ${droppedCardId} -> Col ${targetColumnIndex}, Parent ${newParentId || 'root'}, Before ${insertBeforeCardId || 'end'}`);
+        console.log(`Drop details: Card ${droppedCardId} -> Proj ${activeProjectId}, Col ${targetColumnIndex}, Parent ${newParentId || 'root'}, Before ${insertBeforeCardId || 'end'}`);
 
+        // moveCard now operates on the active project implicitly
         moveCard(droppedCardId, targetColumnIndex, newParentId, insertBeforeCardId);
         clearDragStyles();
-        draggedCardId = null;
+        draggedCardId = null; // Ensure reset after successful or failed move
     }
 
     function clearDragStyles(removeIndicatorInstance = true) {
@@ -841,72 +1103,68 @@ document.addEventListener('DOMContentLoaded', () => {
          }
      }
 
-    // --- Core Logic Functions ---
 
+    // --- Core Logic Functions (Adapted for Active Project) ---
+
+    // REVISED: addCard - Operates on active project, updates lastModified, saves all
     function addCard(columnIndex, parentId = null) {
-        if (parentId && !getCard(parentId)) {
-            console.error(`Cannot add card: Parent ${parentId} not found.`);
+        const projectData = getActiveProjectData();
+        if (!projectData) return; // Safety check
+
+        if (parentId && !projectData.cards[parentId]) {
+            console.error(`Cannot add card: Parent ${parentId} not found in active project.`);
             return;
         }
-        const maxExistingColumn = columnsContainer.children.length - 1;
+        const maxExistingColumn = projectData.columns.length - 1;
         if (columnIndex < 0 || columnIndex > maxExistingColumn + 1) {
              console.error(`Cannot add card: Invalid column index ${columnIndex}. Max is ${maxExistingColumn + 1}`);
              return;
         }
 
-        const newCardId = generateId();
+        const newCardId = generateId('card_');
         const newCard = {
-            id: newCardId,
-            content: '',
-            parentId: parentId,
-            columnIndex: columnIndex,
-            order: 0, // Set below
-            color: '' // Calculated below
+            id: newCardId, content: '', parentId: parentId,
+            columnIndex: columnIndex, order: 0, color: ''
         };
 
-        appData.cards[newCardId] = newCard; // Add to data *before* calculating order/color
+        projectData.cards[newCardId] = newCard; // Add to active project data
 
-        // Determine order (append)
+        // Determine order (append) using project-aware helpers
         let siblings;
-        if (parentId) {
-            siblings = getChildCards(parentId, columnIndex).filter(c => c.id !== newCardId);
-        } else {
-            siblings = getColumnCards(columnIndex).filter(c => c.id !== newCardId);
-        }
+        if (parentId) siblings = getChildCards(parentId, columnIndex).filter(c => c.id !== newCardId);
+        else siblings = getColumnCards(columnIndex).filter(c => c.id !== newCardId);
         newCard.order = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
 
-        // Calculate Color (depends on order for root cards)
+        // Calculate Color (uses active project context)
         newCard.color = getColorForCard(newCard);
 
-        // If adding a root card, existing root card colors might need update if order affects hue
+        // If adding a root card, update other root card colors if needed
         if (columnIndex === 0 && !parentId) {
-             const rootCards = getColumnCards(0);
+             const rootCards = getColumnCards(0); // Gets roots from active project
              rootCards.forEach(rc => {
                   const newColor = getColorForCard(rc);
-                  if (rc.color !== newColor) {
-                      rc.color = newColor;
-                      // Update element if already rendered (though we re-render below)
-                      const rcEl = getCardElement(rc.id);
-                      if (rcEl) rcEl.style.backgroundColor = rc.color;
-                  }
+                  if (rc.color !== newColor) rc.color = newColor;
+                  // DOM update will happen in re-render below
              });
         }
 
-
-        while (columnsContainer.children.length <= columnIndex) {
-             addColumn();
+        // Ensure column exists in the project data structure
+        while (projectData.columns.length <= columnIndex) {
+             addColumnInternal(false); // Add to active project, don't save yet
         }
 
-        // Re-render affected columns
+        // Re-render affected columns in the DOM
         const targetColumnEl = getColumnElementByIndex(columnIndex);
         if (targetColumnEl) renderColumnContent(targetColumnEl, columnIndex);
 
-        if (columnsContainer.children.length > columnIndex + 1) {
+        // Re-render next column if it exists and might be affected (e.g., group headers)
+        if (projectData.columns.length > columnIndex + 1) {
              const nextColumnEl = getColumnElementByIndex(columnIndex + 1);
              if (nextColumnEl) renderColumnContent(nextColumnEl, columnIndex + 1);
         }
 
-        saveData();
+        updateProjectLastModified(); // Mark project as modified
+        saveProjectsData(); // Save all project data
 
         requestAnimationFrame(() => {
              const newCardEl = getCardElement(newCardId);
@@ -916,60 +1174,57 @@ document.addEventListener('DOMContentLoaded', () => {
                   newCardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
              }
         });
-        console.log(`Card ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order}`);
+        console.log(`Card ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order} in project ${activeProjectId}`);
     }
 
+    // REVISED: deleteCard - Operates on active project, updates lastModified, saves all
     function deleteCard(cardId) {
-        const card = getCard(cardId);
+        const projectData = getActiveProjectData();
+        const card = projectData.cards[cardId];
         if (!card) return;
 
-        const descendantIds = getDescendantIds(cardId);
+        const descendantIds = getDescendantIds(cardId); // Uses active project data
         const allIdsToDelete = [cardId, ...descendantIds];
         const numDescendants = descendantIds.length;
         const wasRoot = !card.parentId && card.columnIndex === 0;
 
-        if (!confirm(`Delete card #${cardId.slice(-4)} and its ${numDescendants} descendant(s)?`)) {
+        if (!confirm(`Delete card #${cardId.slice(-4)} and its ${numDescendants} descendant(s) from project "${projects[activeProjectId].title}"?`)) {
             return;
         }
 
         const affectedColumns = new Set();
         affectedColumns.add(card.columnIndex);
-        if (numDescendants > 0 && columnsContainer.children.length > card.columnIndex + 1) {
-             affectedColumns.add(card.columnIndex + 1);
-        }
 
         allIdsToDelete.forEach(id => {
-            const c = getCard(id);
+            const c = projectData.cards[id];
             if (c) {
                  affectedColumns.add(c.columnIndex);
-                 if (columnsContainer.children.length > c.columnIndex + 1) {
+                 // Add next column index if descendants might be there
+                 if (projectData.columns.length > c.columnIndex + 1) {
                      affectedColumns.add(c.columnIndex + 1);
                  }
-                 delete appData.cards[id];
+                 delete projectData.cards[id]; // Delete from active project data
             }
         });
 
-         // If a root card was deleted, other root cards might need color updates
          let rootColorsNeedUpdate = wasRoot;
 
          // Re-render affected columns first
          Array.from(affectedColumns).sort((a,b)=>a-b).forEach(colIndex => {
-             const colEl = getColumnElementByIndex(colIndex);
-             if (colEl) {
-                 renderColumnContent(colEl, colIndex);
+             // Only render if column still exists (index might be beyond current max after deletion)
+             if(colIndex < projectData.columns.length) {
+                 const colEl = getColumnElementByIndex(colIndex);
+                 if (colEl) renderColumnContent(colEl, colIndex);
              }
          });
 
         // Now, if needed, update root colors and re-render column 0
         if (rootColorsNeedUpdate) {
-             const rootCards = getColumnCards(0);
+             const rootCards = getColumnCards(0); // Gets current roots from active project
              let updated = false;
              rootCards.forEach(rc => {
                   const newColor = getColorForCard(rc);
-                  if (rc.color !== newColor) {
-                      rc.color = newColor;
-                      updated = true;
-                  }
+                  if (rc.color !== newColor) { rc.color = newColor; updated = true; }
              });
              if (updated) {
                   const col0El = getColumnElementByIndex(0);
@@ -977,59 +1232,83 @@ document.addEventListener('DOMContentLoaded', () => {
              }
         }
 
-        updateAllToolbarButtons();
-        saveData();
-        console.log(`Card ${cardId} and ${numDescendants} descendants deleted.`);
+        updateAllToolbarButtons(); // Update based on new state of active project
+        updateProjectLastModified();
+        saveProjectsData(); // Save changes
+        console.log(`Card ${cardId} and ${numDescendants} descendants deleted from project ${activeProjectId}.`);
     }
 
+    // REVISED: addColumnInternal - Operates on active project's columns array
     function addColumnInternal(doSave = true) {
-        const newIndex = appData.columns.length;
-        appData.columns.push({ id: `col-${generateId()}` });
-        console.log("Internal add column, new count:", appData.columns.length);
-        if (doSave) saveData();
+        const projectData = getActiveProjectData();
+        if (!projectData) return -1; // Safety check
+
+        const newIndex = projectData.columns.length;
+        projectData.columns.push({ id: `col-${generateId()}` });
+        console.log(`Internal add column to project ${activeProjectId}, new count: ${projectData.columns.length}`);
+        if (doSave) {
+             updateProjectLastModified();
+             saveProjectsData();
+        }
         return newIndex;
     }
 
+    // REVISED: addColumn - Operates on active project, updates lastModified, saves all
     function addColumn() {
-         const newIndex = addColumnInternal();
-         const columnEl = createColumnElement(newIndex);
-         columnsContainer.appendChild(columnEl);
-         renderColumnContent(columnEl, newIndex);
-         updateAllToolbarButtons();
-         console.log(`Column ${newIndex} added visually.`);
-         columnsContainer.scrollLeft = columnsContainer.scrollWidth;
+         const newIndex = addColumnInternal(false); // Add to data first, don't save yet
+         if (newIndex === -1) return; // Check if addColumnInternal failed
+
+         const columnEl = createColumnElement(newIndex); // Creates DOM element
+         columnsContainer.appendChild(columnEl); // Add to DOM
+         renderColumnContent(columnEl, newIndex); // Populate with content (should be empty)
+         updateAllToolbarButtons(); // Update UI
+         console.log(`Column ${newIndex} added visually to project ${activeProjectId}.`);
+         columnsContainer.scrollLeft = columnsContainer.scrollWidth; // Scroll to new column
+
+         updateProjectLastModified(); // Mark modified
+         saveProjectsData(); // Save the change
     }
 
+    // REVISED: deleteColumn - Operates on active project, updates lastModified, saves all
     function deleteColumn(columnIndex) {
-        const numColumns = columnsContainer.children.length;
-        const columnEl = getColumnElementByIndex(columnIndex);
+        const projectData = getActiveProjectData();
+        if (!projectData) return;
+
+        const numColumns = projectData.columns.length;
+        const columnEl = getColumnElementByIndex(columnIndex); // Get DOM element
         const isRightmost = columnIndex === numColumns - 1;
-        const columnCards = Object.values(appData.cards).filter(card => card.columnIndex === columnIndex);
+        const columnCards = Object.values(projectData.cards).filter(card => card.columnIndex === columnIndex);
         const canDelete = isRightmost && numColumns > MIN_COLUMNS && columnCards.length === 0;
 
         if (!canDelete) {
             alert("Cannot delete this column. It might not be the rightmost, the minimum number of columns hasn't been exceeded, or it's not empty.");
             return;
         }
-        if (!confirm("Delete this empty column?")) return;
+        if (!confirm(`Delete this empty column from project "${projects[activeProjectId].title}"?`)) return;
 
+        // Remove from DOM
         if (columnEl && columnEl.parentNode === columnsContainer) {
             columnsContainer.removeChild(columnEl);
         } else {
-            renderApp(); return; // Failsafe
+             console.warn("Column element not found for deletion, re-rendering as failsafe.");
+             renderApp(); // Failsafe if DOM is inconsistent
         }
 
-        if(appData.columns.length > columnIndex) {
-             appData.columns.splice(columnIndex, 1);
+        // Remove from project data
+        if(projectData.columns.length > columnIndex) {
+             projectData.columns.splice(columnIndex, 1);
         }
 
-        updateAllToolbarButtons();
-        saveData();
-        console.log(`Column ${columnIndex} deleted.`);
+        updateAllToolbarButtons(); // Update remaining buttons
+        updateProjectLastModified();
+        saveProjectsData(); // Save the deletion
+        console.log(`Column ${columnIndex} deleted from project ${activeProjectId}.`);
     }
 
+    // REVISED: moveCard - Operates entirely within the active project's data
     function moveCard(cardId, targetColumnIndex, newParentId, insertBeforeCardId) {
-        const card = getCard(cardId);
+        const projectData = getActiveProjectData();
+        const card = projectData.cards[cardId];
         if (!card) return;
 
         const originalColumnIndex = card.columnIndex;
@@ -1037,81 +1316,74 @@ document.addEventListener('DOMContentLoaded', () => {
         const wasRoot = !originalParentId && originalColumnIndex === 0;
         const isBecomingRoot = !newParentId && targetColumnIndex === 0;
 
-        // Prevent dropping into self/descendant
+        // Prevent dropping into self/descendant (uses active project context)
         let tempParentId = newParentId;
         while(tempParentId) {
             if (tempParentId === cardId) {
                  console.warn("Move Aborted: Cannot move card inside itself or descendants.");
-                 return;
+                 return; // Abort the move
             }
-            tempParentId = getCard(tempParentId)?.parentId;
+            tempParentId = projectData.cards[tempParentId]?.parentId; // Check within active project
         }
 
         // --- Update card basic properties ---
         card.columnIndex = targetColumnIndex;
         card.parentId = newParentId;
-        // Order and color calculated below, after siblings are known
 
-        // --- Calculate new order ---
+        // --- Calculate new order (uses active project context) ---
         let siblings;
-        if (newParentId) {
-            siblings = getChildCards(newParentId, targetColumnIndex).filter(c => c.id !== cardId);
-        } else {
-            siblings = getColumnCards(targetColumnIndex).filter(c => c.id !== cardId);
-        }
-        // siblings are already sorted
+        if (newParentId) siblings = getChildCards(newParentId, targetColumnIndex).filter(c => c.id !== cardId);
+        else siblings = getColumnCards(targetColumnIndex).filter(c => c.id !== cardId);
 
         let newOrder;
         if (insertBeforeCardId && insertBeforeCardId !== cardId) {
-            const insertBeforeCard = getCard(insertBeforeCardId);
-            if (insertBeforeCard) {
+            const insertBeforeCard = projectData.cards[insertBeforeCardId]; // Get from active project
+            if (insertBeforeCard && insertBeforeCard.columnIndex === targetColumnIndex && insertBeforeCard.parentId === newParentId) { // Ensure sibling exists and is valid target
                  const insertBeforeOrder = insertBeforeCard.order;
+                 // Find the card *before* the insertBeforeCard among the *filtered* siblings
+                 const insertBeforeIndexInSiblings = siblings.findIndex(c => c.id === insertBeforeCardId);
                  let prevOrder = -1;
-                 const insertBeforeIndex = siblings.findIndex(c => c.id === insertBeforeCardId);
-                 if (insertBeforeIndex > 0) {
-                     prevOrder = siblings[insertBeforeIndex - 1].order;
-                 } else if (insertBeforeIndex === -1) {
-                      console.warn(`insertBeforeCardId ${insertBeforeCardId} not found among siblings. Appending.`);
-                      newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
+                 if(insertBeforeIndexInSiblings > 0) {
+                      prevOrder = siblings[insertBeforeIndexInSiblings - 1].order;
+                 } else if (insertBeforeIndexInSiblings === 0) {
+                      prevOrder = -1; // Insert at the beginning
                  }
-                 if (insertBeforeIndex !== -1) {
-                     newOrder = (prevOrder + insertBeforeOrder) / 2.0;
-                 }
+                 // Calculate intermediate order
+                 newOrder = (prevOrder + insertBeforeOrder) / 2.0;
             } else {
-                 console.warn(`Invalid insertBeforeCardId ${insertBeforeCardId}. Appending.`);
+                 console.warn(`Invalid insertBeforeCardId ${insertBeforeCardId} or not a valid sibling. Appending.`);
                  newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
             }
-        } else {
+        } else { // Append
             newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
         }
         card.order = newOrder;
 
         // --- Update Color (must be after order is set for root cards) ---
-        card.color = getColorForCard(card);
+        card.color = getColorForCard(card); // Uses active project context
 
-        // --- Update descendants recursively ---
+        // --- Update descendants recursively (uses active project context) ---
         const columnDiff = targetColumnIndex - originalColumnIndex;
         const affectedDescendants = [];
         let maxDescendantCol = targetColumnIndex; // Track max column needed
-        if (columnDiff !== 0) {
-            const descendants = getDescendantIds(cardId);
+        const descendants = getDescendantIds(cardId); // Get descendants within project
+
+        descendants.forEach(descId => {
+            const descCard = projectData.cards[descId];
+            if (descCard) {
+                descCard.columnIndex += columnDiff;
+                descCard.color = getColorForCard(descCard); // Update descendant colors
+                affectedDescendants.push(descCard);
+                maxDescendantCol = Math.max(maxDescendantCol, descCard.columnIndex);
+            }
+        });
+        // If column didn't change, still update descendant colors as parent color might have changed
+        if (columnDiff === 0) {
             descendants.forEach(descId => {
-                const descCard = getCard(descId);
-                if (descCard) {
-                    descCard.columnIndex += columnDiff;
-                    descCard.color = getColorForCard(descCard); // Update descendant colors
-                    affectedDescendants.push(descCard);
-                    maxDescendantCol = Math.max(maxDescendantCol, descCard.columnIndex);
-                }
-            });
-        } else {
-             // If column didn't change, descendants might still need color update if parent color changed
-             const descendants = getDescendantIds(cardId);
-             descendants.forEach(descId => {
-                 const descCard = getCard(descId);
-                 if (descCard) {
+                 const descCard = projectData.cards[descId];
+                 if (descCard && !affectedDescendants.find(d => d.id === descId)) { // Only update if not already done
                      descCard.color = getColorForCard(descCard);
-                     affectedDescendants.push(descCard); // Track for potential re-render
+                     affectedDescendants.push(descCard);
                  }
              });
         }
@@ -1119,63 +1391,101 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Update colors of other root cards if hierarchy changed ---
         let rootColorsNeedUpdate = false;
-        if (wasRoot !== isBecomingRoot || (isBecomingRoot && siblings.length > 0)) {
-             // If a card became root, left root, or reordered among roots
+        if (wasRoot !== isBecomingRoot || (isBecomingRoot && card.order !== projectData.cards[cardId].order) || wasRoot) {
+            // If card became root, left root, reordered among roots, or was root and moved (affecting others)
              rootColorsNeedUpdate = true;
         }
 
-
-        // --- Ensure enough columns exist ---
-        while (columnsContainer.children.length <= maxDescendantCol) {
-             addColumn();
+        // --- Ensure enough columns exist IN THE PROJECT DATA ---
+        while (projectData.columns.length <= maxDescendantCol) {
+             addColumnInternal(false); // Add to active project data, don't save yet
         }
 
         // --- Determine Columns to Re-render ---
         const columnsToRender = new Set();
         columnsToRender.add(originalColumnIndex);
         columnsToRender.add(targetColumnIndex);
-        if (originalParentId) columnsToRender.add(getCard(originalParentId)?.columnIndex + 1);
-        if (newParentId) columnsToRender.add(getCard(newParentId)?.columnIndex + 1);
+        // Add columns where parents *were* or *are* to update groups
+        if (originalParentId) columnsToRender.add(projectData.cards[originalParentId]?.columnIndex + 1);
+        if (newParentId) columnsToRender.add(projectData.cards[newParentId]?.columnIndex + 1);
+        // Add columns where descendants ended up
         affectedDescendants.forEach(desc => columnsToRender.add(desc.columnIndex));
-        // Add columns next to original/target if they exist
-        if (columnsContainer.children.length > originalColumnIndex + 1) columnsToRender.add(originalColumnIndex + 1);
-        if (columnsContainer.children.length > targetColumnIndex + 1) columnsToRender.add(targetColumnIndex + 1);
+        // Add columns *next to* original/target columns to potentially update groups they contain
+        if (projectData.columns.length > originalColumnIndex + 1) columnsToRender.add(originalColumnIndex + 1);
+        if (projectData.columns.length > targetColumnIndex + 1) columnsToRender.add(targetColumnIndex + 1);
 
-        // Filter out invalid column indices (e.g., -1 if parent was missing)
-        const validColumnsToRender = Array.from(columnsToRender).filter(idx => idx !== undefined && idx !== null && idx >= 0).sort((a, b) => a - b);
+        // Filter out invalid column indices (e.g., -1 if parent was missing, or index > max)
+        const validColumnsToRender = Array.from(columnsToRender)
+                                      .filter(idx => idx !== undefined && idx !== null && idx >= 0 && idx < projectData.columns.length)
+                                      .sort((a, b) => a - b);
 
         // --- Update root colors if needed ---
         if (rootColorsNeedUpdate) {
-             const rootCards = getColumnCards(0); // Get current roots
-             rootCards.forEach(rc => {
-                  rc.color = getColorForCard(rc); // Recalculate based on new order
-             });
-             validColumnsToRender.push(0); // Ensure column 0 is re-rendered
+             const rootCards = getColumnCards(0); // Get current roots from active project
+             rootCards.forEach(rc => rc.color = getColorForCard(rc)); // Recalculate based on new order
+             if (!validColumnsToRender.includes(0)) { // Ensure column 0 is re-rendered if not already listed
+                 validColumnsToRender.push(0);
+                 validColumnsToRender.sort((a,b) => a - b);
+             }
         }
 
         // --- Perform the render ---
-        console.log("Re-rendering columns after move:", [...new Set(validColumnsToRender)].sort((a,b)=>a-b)); // Deduplicate and sort
-        [...new Set(validColumnsToRender)].sort((a,b)=>a-b).forEach(index => {
+        console.log("Re-rendering columns after move:", validColumnsToRender);
+        validColumnsToRender.forEach(index => {
             const colEl = getColumnElementByIndex(index);
             if (colEl) {
-                renderColumnContent(colEl, index);
+                renderColumnContent(colEl, index); // Renders based on active project data
             } else {
-                 console.warn(`Attempted to re-render non-existent column at index ${index}`);
+                 console.warn(`Attempted to re-render non-existent column DOM element at index ${index}`);
             }
         });
 
-        updateAllToolbarButtons();
-        saveData();
-        console.log(`Card ${cardId} moved SUCCESS -> Col ${targetColumnIndex}, Parent: ${newParentId || 'root'}, Order: ${card.order}`);
+        updateAllToolbarButtons(); // Update based on new state
+        updateProjectLastModified();
+        saveProjectsData(); // Save all changes
+        console.log(`Card ${cardId} moved SUCCESS -> Proj ${activeProjectId}, Col ${targetColumnIndex}, Parent: ${newParentId || 'root'}, Order: ${card.order}`);
     }
 
+    // REVISED: updateAllToolbarButtons - Operates based on active project DOM/Data
     function updateAllToolbarButtons() {
         Array.from(columnsContainer.children).forEach((col, idx) => {
-            updateToolbarButtons(col, idx);
+            updateToolbarButtons(col, idx); // Uses active project data implicitly
         });
     }
 
+    // --- Sidebar Resizer ---
+    let isResizing = false;
+    resizer.addEventListener('mousedown', (e) => {
+        isResizing = true;
+        document.body.style.cursor = 'ew-resize'; // Indicate resizing across the body
+        document.body.style.userSelect = 'none'; // Prevent text selection during resize
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        const minWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--min-sidebar-width'), 10) || 150;
+        let newWidth = e.clientX;
+        // Clamp width to minimum and reasonable maximum (e.g., half the window width)
+        newWidth = Math.max(minWidth, newWidth);
+        newWidth = Math.min(newWidth, window.innerWidth / 2);
+        document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = 'default';
+            document.body.style.userSelect = 'auto';
+        }
+    });
+
+
     // --- Initial Load ---
-    loadData();
+    loadProjectsData(); // Loads all projects and determines/loads the active one
+    renderProjectList(); // Render the sidebar
+    renderApp(); // Render the main view for the active project
+
+    // Add Project Button Listener
+    addProjectBtn.addEventListener('click', addProject);
 
 }); // End DOMContentLoaded
