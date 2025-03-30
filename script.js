@@ -4,15 +4,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let draggedCardId = null;
     let dragIndicator = null;
     const MIN_COLUMNS = 3;
-    const BASE_COLOR_HUE = 200; // Bluish base
-    const BASE_COLOR_SATURATION = 30;
-    const BASE_COLOR_LIGHTNESS = 90; // Start light
-    const LIGHTNESS_STEP_DOWN = 7; // How much darker each level gets
+    const BASE_COLOR_HUE = 200; // Starting Hue for first root card
+    const HUE_ROTATION_STEP = 35; // Degrees to shift hue for each subsequent root card
+    const BASE_COLOR_SATURATION = 50; // Adjusted base saturation
+    const BASE_COLOR_LIGHTNESS = 92; // Adjusted base lightness (very light)
+    const LIGHTNESS_STEP_DOWN = 8; // How much darker each level gets
+    const SATURATION_STEP_UP = 5; // How much more saturated each level gets
 
     // --- Data Management ---
 
     function generateId() {
-        // More robust ID: timestamp + longer random part
         return Date.now().toString(36) + Math.random().toString(36).substring(2, 10);
     }
 
@@ -30,21 +31,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (savedData) {
             try {
                 const parsedData = JSON.parse(savedData);
-                // Basic data validation/migration could go here
                 if (!parsedData || typeof parsedData !== 'object' || !Array.isArray(parsedData.columns) || typeof parsedData.cards !== 'object') {
                     throw new Error("Invalid data structure");
                 }
                 appData = parsedData;
-                // Ensure essential properties exist on loaded cards (simple migration)
+                // Recalculate all colors on load to ensure consistency with current logic
                 Object.values(appData.cards).forEach(card => {
-                    if (card.order === undefined) card.order = Date.now();
-                    if (!card.color) card.color = getColorForCard(card); // Recalc color if missing
+                     // Temporarily remove color so getColorForCard recalculates based on hierarchy
+                     delete card.color;
                 });
+                 Object.values(appData.cards).forEach(card => {
+                     card.color = getColorForCard(card); // Recalculate and assign
+                 });
+                 // Ensure order exists
+                 Object.values(appData.cards).forEach(card => {
+                      if (card.order === undefined) card.order = Date.now() + Math.random(); // Assign order if missing
+                 });
 
             } catch (e) {
                 console.error("Error parsing data from localStorage:", e);
                 alert("Could not load saved data. Resetting to default.");
-                localStorage.removeItem('writingToolData'); // Clear corrupted data
+                localStorage.removeItem('writingToolData');
                 appData = { columns: [], cards: {} };
                 initializeDefaultColumns();
             }
@@ -58,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         appData.columns = [];
         appData.cards = {};
         for (let i = 0; i < MIN_COLUMNS; i++) {
-            addColumnInternal(false); // Don't save until all defaults are added
+            addColumnInternal(false);
         }
         saveData();
     }
@@ -72,23 +79,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return Array.from(columnsContainer.children).indexOf(columnElement);
     }
 
-     function getColumnCards(columnIndex) {
-        // Root cards in a specific column
+    function getColumnCards(columnIndex) {
         return Object.values(appData.cards)
                .filter(card => card.columnIndex === columnIndex && !card.parentId)
-               .sort((a, b) => a.order - b.order); // Keep sorted
+               .sort((a, b) => a.order - b.order);
     }
 
     function getChildCards(parentId, targetColumnIndex = null) {
-        // Child cards for a specific parent, optionally filtered by column index
         let children = Object.values(appData.cards)
                          .filter(card => card.parentId === parentId);
         if (targetColumnIndex !== null) {
             children = children.filter(card => card.columnIndex === targetColumnIndex);
         }
-        return children.sort((a, b) => a.order - b.order); // Keep sorted
+        return children.sort((a, b) => a.order - b.order);
     }
-
 
     function getCardElement(cardId) {
         return document.getElementById(`card-${cardId}`);
@@ -113,7 +117,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return descendants;
     }
 
-
     function getAncestorIds(cardId) {
         let ancestors = [];
         let currentCard = getCard(cardId);
@@ -124,50 +127,97 @@ document.addEventListener('DOMContentLoaded', () => {
         return ancestors;
     }
 
+    // --- Color Calculation (REVISED) ---
     function getColorForCard(card) {
-         if (!card) return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`; // Default fallback
+        if (!card) return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`; // Default fallback
 
-         let level = 0;
-         let current = card;
-         while(current && current.parentId) {
-             level++;
-             current = getCard(current.parentId);
-         }
+        if (card.columnIndex === 0 && !card.parentId) { // Is a Root Card?
+            const rootCards = getColumnCards(0); // Sorted by order
+            const rootIndex = rootCards.findIndex(c => c.id === card.id);
+            const hue = (BASE_COLOR_HUE + (rootIndex >= 0 ? rootIndex : 0) * HUE_ROTATION_STEP) % 360; // Rotate hue
+            return `hsl(${hue}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
 
-         const lightness = Math.max(20, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN)); // Don't go too dark
-         const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * (LIGHTNESS_STEP_DOWN / 1.5))); // Increase saturation slightly
+        } else if (card.parentId) { // Is a Child Card?
+            const parentCard = getCard(card.parentId);
+            if (!parentCard) {
+                 console.warn(`Parent card ${card.parentId} not found for card ${card.id}. Using default color.`);
+                 return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - LIGHTNESS_STEP_DOWN}%)`;
+            }
 
-         return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
+            // Get parent's calculated color (recalculate if missing, though it should exist)
+            const parentColor = parentCard.color || getColorForCard(parentCard);
+
+            try {
+                const match = parentColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+                if (match) {
+                    let [, h, s, l] = match.map(Number); // Keep parent's Hue (h)
+                    // Darken and saturate relative to parent
+                    const newLightness = Math.max(15, l - LIGHTNESS_STEP_DOWN); // Ensure minimum lightness
+                    const newSaturation = Math.min(100, s + SATURATION_STEP_UP);
+                    return `hsl(${h}, ${newSaturation}%, ${newLightness}%)`;
+                } else {
+                     console.warn(`Could not parse parent color ${parentColor}. Using fallback darkening.`);
+                     // Fallback: Darken the default base color based on estimated level
+                     let level = getCardDepth(card.id);
+                     const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
+                     const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
+                     return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`; // Use default hue
+                }
+            } catch (e) {
+                 console.error("Error processing parent color:", e);
+                 let level = getCardDepth(card.id);
+                 const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
+                 const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
+                 return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
+            }
+        } else {
+             // Card in col > 0 but no parent? Should not happen.
+             console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent. Using default color.`);
+             return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
+        }
     }
 
+    // Helper to get card depth for fallback color calculation
+    function getCardDepth(cardId) {
+         let level = 0;
+         let currentCard = getCard(cardId);
+         while (currentCard && currentCard.parentId) {
+             level++;
+             currentCard = getCard(currentCard.parentId);
+         }
+         return level;
+    }
+
+
     function getHighlightColor(baseColor) {
-        // Attempt to parse HSL and make it slightly darker/more saturated
         try {
             const match = baseColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
             if (match) {
                 const [, h, s, l] = match.map(Number);
-                const highlightL = Math.max(15, l - 15); // Darker
+                const highlightL = Math.max(10, l - 15); // Darker
                 const highlightS = Math.min(100, s + 15); // More saturated
                 return `hsl(${h}, ${highlightS}%, ${highlightL}%)`;
             }
         } catch (e) { console.warn("Could not parse color for highlight:", baseColor); }
-        // Fallback if parsing fails
-        return 'rgba(0, 0, 0, 0.15)'; // Generic darker overlay idea
+        return 'rgba(0, 0, 0, 0.15)'; // Fallback
     }
 
 
     // --- DOM Manipulation & Rendering ---
 
+    // REVISED: Create Card Element - Drag handle limited to header
     function createCardElement(card) {
         const cardEl = document.createElement('div');
         cardEl.id = `card-${card.id}`;
         cardEl.className = 'card';
-        cardEl.draggable = true;
+        // cardEl.draggable = false; // Card itself is NOT draggable
         cardEl.dataset.cardId = card.id;
+        // Ensure color is calculated and applied
+        card.color = card.color || getColorForCard(card); // Recalculate if missing
         cardEl.style.backgroundColor = card.color;
 
         cardEl.innerHTML = `
-            <div class="card-header">
+            <div class="card-header" draggable="true"> <!-- Header IS draggable -->
                 <span class="card-id">#${card.id.slice(-4)}</span>
                 <div class="card-actions">
                     <button class="add-child-btn" title="Add Child Card">+</button>
@@ -177,33 +227,35 @@ document.addEventListener('DOMContentLoaded', () => {
             <textarea class="card-content" placeholder="Enter text...">${card.content || ''}</textarea>
         `;
 
-        // Add event listeners
-        cardEl.addEventListener('dragstart', handleDragStart);
-        cardEl.addEventListener('dragend', handleDragEnd);
-        // Prevent drag over the card itself causing issues with indicator placement
+        const headerEl = cardEl.querySelector('.card-header');
+        const textarea = cardEl.querySelector('.card-content');
+
+        // Drag listeners attached to HEADER
+        headerEl.addEventListener('dragstart', handleDragStart);
+        headerEl.addEventListener('dragend', handleDragEnd); // dragend fires on the source element
+
+        // Drop-related listeners remain on the card element (as a drop target)
         cardEl.addEventListener('dragenter', (e) => {
              if (e.target.closest('.card') === cardEl) {
-                 e.stopPropagation(); // Stop propagating enter to parent containers if over self
+                 e.stopPropagation();
              }
-             handleDragEnter(e); // Still call general enter handler
+             handleDragEnter(e);
         });
          cardEl.addEventListener('dragleave', handleDragLeave);
+         // Note: 'drop' and 'dragover' are handled by parent containers (group/cards-container)
 
-
-        const textarea = cardEl.querySelector('.card-content');
+        // Other listeners
         textarea.addEventListener('blur', handleTextareaBlur);
         textarea.addEventListener('focus', handleTextareaFocus);
-        textarea.addEventListener('input', autoResizeTextarea); // Auto-resize
-        // Initial resize check
+        textarea.addEventListener('input', autoResizeTextarea);
         requestAnimationFrame(() => autoResizeTextarea({ target: textarea }));
 
-
-        cardEl.querySelector('.add-child-btn').addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent card focus/highlighting
+        headerEl.querySelector('.add-child-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
             addCard(card.columnIndex + 1, card.id);
         });
-        cardEl.querySelector('.delete-card-btn').addEventListener('click', (e) => {
-            e.stopPropagation(); // Prevent card focus/highlighting
+        headerEl.querySelector('.delete-card-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
              deleteCard(card.id);
         });
 
@@ -212,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createGroupElement(parentId) {
         const parentCard = getCard(parentId);
-        if (!parentCard) return null; // Should not happen
+        if (!parentCard) return null;
 
         const groupEl = document.createElement('div');
         groupEl.id = `group-${parentId}`;
@@ -222,14 +274,11 @@ document.addEventListener('DOMContentLoaded', () => {
         groupEl.innerHTML = `
             <div class="group-header">Children of <strong>#${parentId.slice(-4)}</strong></div>
         `;
-        // Cards will be appended here later by renderColumnContent
 
-        // Add drop listeners for adding children directly to group
         groupEl.addEventListener('dragover', handleDragOver);
         groupEl.addEventListener('dragenter', handleDragEnter);
         groupEl.addEventListener('dragleave', handleDragLeave);
         groupEl.addEventListener('drop', handleDrop);
-
 
         return groupEl;
     }
@@ -254,123 +303,104 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const cardsContainer = columnEl.querySelector('.cards-container');
 
-        // Add event listeners
-        columnEl.querySelector('.add-card-btn').addEventListener('click', () => addCard(columnIndex, null)); // Root card
+        columnEl.querySelector('.add-card-btn').addEventListener('click', () => addCard(columnIndex, null));
         columnEl.querySelector('.add-column-btn').addEventListener('click', addColumn);
         columnEl.querySelector('.delete-column-btn').addEventListener('click', () => deleteColumn(columnIndex));
 
-        // Double click to add card
         cardsContainer.addEventListener('dblclick', (e) => {
-             // Ensure click is directly on the container background and it's the first column
              if (e.target === cardsContainer && columnIndex === 0) {
                  addCard(columnIndex, null);
              }
         });
 
-        // Drag listeners for empty column space / reordering root cards
         cardsContainer.addEventListener('dragover', handleDragOver);
         cardsContainer.addEventListener('dragenter', handleDragEnter);
         cardsContainer.addEventListener('dragleave', handleDragLeave);
         cardsContainer.addEventListener('drop', handleDrop);
-
 
         return columnEl;
     }
 
     function renderColumnContent(columnEl, columnIndex) {
         const cardsContainer = columnEl.querySelector('.cards-container');
-        cardsContainer.innerHTML = ''; // Clear existing content
+        cardsContainer.innerHTML = '';
 
-        // --- Render Groups first (based on parents in the *previous* column) ---
+        // Render Groups first
         if (columnIndex > 0) {
             const potentialParentCards = Object.values(appData.cards)
                 .filter(card => card.columnIndex === columnIndex - 1)
-                .sort((a, b) => a.order - b.order); // Sort parents to maintain group order
+                .sort((a, b) => a.order - b.order);
 
             potentialParentCards.forEach(parentCard => {
                  const groupEl = createGroupElement(parentCard.id);
                  if (!groupEl) return;
 
-                 const childCards = getChildCards(parentCard.id, columnIndex); // Get children *in this column*
+                 const childCards = getChildCards(parentCard.id, columnIndex);
 
                  childCards.forEach(childCard => {
-                     const cardEl = createCardElement(childCard);
-                     groupEl.appendChild(cardEl); // Append card to its group
+                     const cardEl = createCardElement(childCard); // Will ensure color is correct
+                     groupEl.appendChild(cardEl);
                  });
-
-                 cardsContainer.appendChild(groupEl); // Append the group (even if empty)
+                 cardsContainer.appendChild(groupEl);
             });
         }
 
-        // --- Render Root Cards for this column ---
+        // Render Root Cards for this column
         const rootCardsInColumn = getColumnCards(columnIndex); // Already sorted
 
         rootCardsInColumn.forEach(card => {
-            const cardEl = createCardElement(card);
+            const cardEl = createCardElement(card); // Will ensure color is correct
             cardsContainer.appendChild(cardEl);
         });
 
-
-         updateToolbarButtons(columnEl, columnIndex);
+        updateToolbarButtons(columnEl, columnIndex);
     }
 
-     function renderApp() {
-        columnsContainer.innerHTML = ''; // Clear all columns
+    function renderApp() {
+        columnsContainer.innerHTML = '';
 
-        // Ensure correct number of columns based on data
         let maxColumnIndex = MIN_COLUMNS - 1;
         Object.values(appData.cards).forEach(card => {
              maxColumnIndex = Math.max(maxColumnIndex, card.columnIndex);
         });
 
-         // Ensure appData.columns array matches the required columns
-         while (appData.columns.length <= maxColumnIndex) {
-             addColumnInternal(false); // Add to data model without saving/rendering yet
-         }
-        // Optional: Trim excess columns from appData.columns if needed (currently implicit)
+        while (appData.columns.length <= maxColumnIndex) {
+             addColumnInternal(false);
+        }
 
-        // Determine the number of columns to actually render (at least MIN_COLUMNS)
         const columnsToRenderCount = Math.max(MIN_COLUMNS, appData.columns.length);
 
         for (let i = 0; i < columnsToRenderCount; i++) {
              const columnEl = createColumnElement(i);
              columnsContainer.appendChild(columnEl);
-             // Render content AFTER the column element exists in the DOM
              renderColumnContent(columnEl, i);
         }
 
-         // Ensure toolbars are correctly updated after initial render
-         updateAllToolbarButtons();
-
-        console.log("App rendered. Data:", JSON.parse(JSON.stringify(appData))); // Deep copy for logging
+        updateAllToolbarButtons();
+        console.log("App rendered.");
     }
 
 
-     function updateToolbarButtons(columnEl, columnIndex) {
+    function updateToolbarButtons(columnEl, columnIndex) {
          const addCardBtn = columnEl.querySelector('.add-card-btn');
          const addColBtn = columnEl.querySelector('.add-column-btn');
          const delColBtn = columnEl.querySelector('.delete-column-btn');
-         const numColumns = columnsContainer.children.length; // Use actual DOM columns count
+         const numColumns = columnsContainer.children.length;
          const isRightmost = columnIndex === numColumns - 1;
 
-         // Add Card: Only in the first column
          addCardBtn.classList.toggle('hidden', columnIndex !== 0);
-
-         // Add Column: Only in the rightmost column
          addColBtn.classList.toggle('hidden', !isRightmost);
 
-         // Delete Column: Only rightmost, if > MIN_COLUMNS, and if column is empty
          const columnCards = Object.values(appData.cards).filter(card => card.columnIndex === columnIndex);
          const canDelete = isRightmost && numColumns > MIN_COLUMNS && columnCards.length === 0;
          delColBtn.classList.toggle('hidden', !canDelete);
-         delColBtn.disabled = !canDelete; // Also disable visually
-     }
+         delColBtn.disabled = !canDelete;
+    }
 
     function autoResizeTextarea(event) {
         const textarea = event.target;
-        // Temporarily shrink, then set to scroll height. Added max-height for sanity.
         textarea.style.height = 'auto';
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 500)}px`; // Limit max height
+        textarea.style.height = `${Math.min(textarea.scrollHeight, 500)}px`;
     }
 
     // --- Event Handlers ---
@@ -378,7 +408,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function handleTextareaBlur(event) {
         const textarea = event.target;
         const cardEl = textarea.closest('.card');
-        if (!cardEl) return; // Card might have been deleted while editing
+        if (!cardEl) return;
         const cardId = cardEl.dataset.cardId;
         const card = getCard(cardId);
 
@@ -388,62 +418,69 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Card ${cardId} content saved.`);
         }
         cardEl.classList.remove('editing');
-        clearHighlights(); // Remove highlights when focus is lost
+        clearHighlights();
     }
 
-     function handleTextareaFocus(event) {
+    function handleTextareaFocus(event) {
          const textarea = event.target;
          const cardEl = textarea.closest('.card');
          const cardId = cardEl.dataset.cardId;
 
          cardEl.classList.add('editing');
          highlightHierarchy(cardId);
-     }
+    }
 
-     function highlightHierarchy(cardId) {
-         clearHighlights(); // Clear previous highlights
+    function highlightHierarchy(cardId) {
+         clearHighlights();
 
          const targetCard = getCard(cardId);
          if (!targetCard) return;
 
          const ancestors = getAncestorIds(cardId);
          const descendants = getDescendantIds(cardId);
-
          const allToHighlight = [cardId, ...ancestors, ...descendants];
 
          allToHighlight.forEach(id => {
              const cardEl = getCardElement(id);
              if (cardEl) {
                  cardEl.classList.add('highlight');
-                 const baseColor = cardEl.style.backgroundColor;
-                 const highlightBg = getHighlightColor(baseColor);
-                 cardEl.style.backgroundColor = highlightBg; // Apply directly
+                 // Use existing color recalculation for highlight effect
+                 const baseColor = cardEl.style.backgroundColor || getColorForCard(getCard(id)); // Get base color
+                 const highlightBg = getHighlightColor(baseColor); // Calculate highlight
+                 cardEl.style.backgroundColor = highlightBg; // Apply highlight
              }
-             // Highlight the corresponding group header if it's a parent
-              const groupEl = getGroupElement(id);
-              if (groupEl) {
-                  groupEl.classList.add('highlight'); // Maybe add specific style for group highlight
-              }
+             const groupEl = getGroupElement(id);
+             if (groupEl) {
+                  groupEl.classList.add('highlight');
+             }
          });
-     }
+    }
 
-     function clearHighlights() {
+    function clearHighlights() {
         document.querySelectorAll('.card.highlight, .card.editing, .card-group.highlight').forEach(el => {
             el.classList.remove('highlight', 'editing');
             if (el.classList.contains('card')) {
-                 // Reset background color to original calculated color
                  const card = getCard(el.dataset.cardId);
-                 if(card) el.style.backgroundColor = card.color;
-                 else el.style.backgroundColor = ''; // Fallback remove inline style
+                 // Re-apply the correct *base* color
+                 if(card) el.style.backgroundColor = card.color || getColorForCard(card); // Ensure base color is reapplied
+                 else el.style.backgroundColor = '';
             }
         });
-     }
+    }
 
+    // REVISED: handleDragStart - Expects event target to be the header
     function handleDragStart(event) {
-        // Make sure we're dragging the card, not the textarea or buttons
-        const cardEl = event.target.closest('.card');
-        if (!cardEl || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'BUTTON') {
-            event.preventDefault(); // Prevent dragging from controls inside
+        // Ensure drag starts on the header, not internal elements like buttons
+        if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+            event.preventDefault();
+            return;
+        }
+
+        const headerEl = event.target.closest('.card-header');
+        const cardEl = headerEl ? headerEl.closest('.card') : null;
+
+        if (!cardEl) {
+            event.preventDefault(); // Should not happen if listener is correct, but safeguard
             return;
         }
 
@@ -451,35 +488,40 @@ document.addEventListener('DOMContentLoaded', () => {
         event.dataTransfer.setData('text/plain', draggedCardId);
         event.dataTransfer.effectAllowed = 'move';
 
-        // Delay adding class to avoid styling the ghost image
         requestAnimationFrame(() => {
+            // Add dragging class to the *card* element for visual feedback
             cardEl.classList.add('dragging');
         });
 
-        // Create visual drag indicator element if it doesn't exist
         if (!dragIndicator) {
             dragIndicator = document.createElement('div');
             dragIndicator.className = 'drag-over-indicator';
-            dragIndicator.style.display = 'none'; // Initially hidden
-            document.body.appendChild(dragIndicator); // Append to body to avoid interference
+            dragIndicator.style.display = 'none';
+            document.body.appendChild(dragIndicator);
         }
         console.log(`Drag Start: ${draggedCardId}`);
     }
 
+    // REVISED: handleDragEnd - Expects event target to be the header
     function handleDragEnd(event) {
         if (draggedCardId) {
             const cardEl = getCardElement(draggedCardId);
             if (cardEl) {
+                // Remove dragging class from the *card* element
                 cardEl.classList.remove('dragging');
             }
         }
-        clearDragStyles(); // Clears indicator and visual styles
+        clearDragStyles();
         draggedCardId = null;
         console.log("Drag End");
     }
 
+    // --- DragOver, DragEnter, DragLeave, Drop handlers remain largely the same ---
+    // They operate on potential drop targets (cards, groups, containers)
+    // and don't depend on where the drag *started* from initially.
+
     function handleDragOver(event) {
-        event.preventDefault(); // *** CRITICAL: Allow drop ***
+        event.preventDefault();
         event.dataTransfer.dropEffect = 'move';
 
         if (!draggedCardId) return;
@@ -489,27 +531,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetGroup = targetElement.closest('.card-group');
         const targetCardsContainer = targetElement.closest('.cards-container');
 
-        clearDragStyles(false); // Clear previous styles but keep indicator instance
+        clearDragStyles(false);
 
         let validDropTarget = false;
         let indicatorParent = null;
         let indicatorNextSibling = null;
 
-        if (targetCard && targetCard.dataset.cardId !== draggedCardId) {
-             // *** CONSTRAINT: Cannot drop relative to self ***
-            // Hovering over another card (for reordering)
+        // Constraint: Cannot drop near the card being dragged
+        if (targetCard && targetCard.dataset.cardId === draggedCardId) {
+             validDropTarget = false; // Hovering over self, invalid drop zone
+             // Optionally hide indicator explicitly here if needed
+             if (dragIndicator) dragIndicator.style.display = 'none';
+        }
+        // Hovering over another card (for reordering)
+        else if (targetCard) {
             const rect = targetCard.getBoundingClientRect();
             const midway = rect.top + rect.height / 2;
-            const parentContainer = targetCard.parentNode; // cardsContainer or card-group
+            const parentContainer = targetCard.parentNode;
 
-            targetCard.classList.add('drag-over-card'); // Highlight target card border
+            targetCard.classList.add('drag-over-card');
 
              if (event.clientY < midway) {
-                 // Insert before targetCard
                  indicatorParent = parentContainer;
                  indicatorNextSibling = targetCard;
              } else {
-                 // Insert after targetCard
                  indicatorParent = parentContainer;
                  indicatorNextSibling = targetCard.nextSibling;
              }
@@ -517,16 +562,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else if (targetGroup) {
             // Hovering over a card group
-             const groupParentId = targetGroup.dataset.parentId;
-             // *** CONSTRAINT: Cannot drop into own child group ***
-             if (groupParentId === draggedCardId) {
-                 console.log("Cannot drop into own child group");
+            const groupParentId = targetGroup.dataset.parentId;
+            // Constraint: Cannot drop into own child group
+            if (groupParentId === draggedCardId) {
                  validDropTarget = false;
-             } else {
+                 if (dragIndicator) dragIndicator.style.display = 'none';
+            } else {
                  targetGroup.classList.add('drag-over-group');
                  validDropTarget = true;
-
-                 // Find nearest card within the group to determine position
                  const cardsInGroup = Array.from(targetGroup.querySelectorAll('.card'));
                  let closestCard = null;
                  let smallestDistance = Infinity;
@@ -550,31 +593,28 @@ document.addEventListener('DOMContentLoaded', () => {
                            indicatorNextSibling = closestCard.nextSibling;
                       }
                  } else {
-                      // Group is empty, place indicator inside
-                      // Need to account for group header
-                       const header = targetGroup.querySelector('.group-header');
-                       indicatorParent = targetGroup;
-                       indicatorNextSibling = header ? header.nextSibling : targetGroup.firstChild; // Place after header or at start
+                      const header = targetGroup.querySelector('.group-header');
+                      indicatorParent = targetGroup;
+                      indicatorNextSibling = header ? header.nextSibling : targetGroup.firstChild;
                  }
-             }
+            }
 
         } else if (targetCardsContainer) {
             // Hovering over empty space in a column's card container
             const columnEl = targetCardsContainer.closest('.column');
             const columnIndex = getColumnIndex(columnEl);
-
-             // Allow dropping as root card only in first column or if the dragged card was already a root card
             const draggedCardIsRoot = !getCard(draggedCardId)?.parentId;
-            if (columnIndex === 0 || draggedCardIsRoot) {
-                targetCardsContainer.classList.add('drag-over-empty');
-                validDropTarget = true;
 
-                 // Similar logic to groups: find nearest card/group to determine position
+            // Allow dropping as root card only in first column OR if moving an existing root card
+            if (columnIndex === 0 || draggedCardIsRoot) {
+                 targetCardsContainer.classList.add('drag-over-empty');
+                 validDropTarget = true;
                  const children = Array.from(targetCardsContainer.children).filter(el => el.matches('.card, .card-group'));
                  let closestElement = null;
                  let smallestDistance = Infinity;
 
                  children.forEach(el => {
+                     if(el.dataset.cardId === draggedCardId) return; // Skip self
                      const rect = el.getBoundingClientRect();
                      const dist = Math.abs(event.clientY - (rect.top + rect.height / 2));
                      if (dist < smallestDistance) {
@@ -593,79 +633,88 @@ document.addEventListener('DOMContentLoaded', () => {
                          indicatorNextSibling = closestElement.nextSibling;
                      }
                  } else {
-                     // Container is empty, append indicator
                      indicatorParent = targetCardsContainer;
                      indicatorNextSibling = null; // Append
                  }
-
-            } else {
-                // Cannot drop into empty space of non-root columns unless it was already a root card
+             } else {
                 validDropTarget = false;
-                 console.log("Cannot drop non-root card into empty space of column > 0");
-            }
-
+                 if (dragIndicator) dragIndicator.style.display = 'none';
+             }
         } else {
-             validDropTarget = false;
+            validDropTarget = false;
         }
 
-        // Position and show the indicator if it's a valid target
         if (validDropTarget && indicatorParent) {
              if(indicatorNextSibling) {
                  indicatorParent.insertBefore(dragIndicator, indicatorNextSibling);
              } else {
-                 indicatorParent.appendChild(dragIndicator); // Append if no next sibling
+                 indicatorParent.appendChild(dragIndicator);
              }
              dragIndicator.style.display = 'block';
         } else {
-             // Hide indicator if not over a valid drop zone or invalid position
              if(dragIndicator) dragIndicator.style.display = 'none';
         }
     }
 
     function handleDragEnter(event) {
-        event.preventDefault(); // Allow drop
-        event.stopPropagation(); // Prevent container highlighting if entering a child
+        event.preventDefault();
+        event.stopPropagation();
 
-        // Basic highlight on container enter - dragOver handles specifics
         const targetGroup = event.target.closest('.card-group');
         const targetCardsContainer = event.target.closest('.cards-container');
-         // *** CONSTRAINT: Cannot drop into own child group ***
-         if (targetGroup && targetGroup.dataset.parentId !== draggedCardId) {
+        const targetCard = event.target.closest('.card');
+
+        if (targetCard && targetCard.dataset.cardId === draggedCardId) return; // No highlight on self enter
+        if (targetGroup && targetGroup.dataset.parentId === draggedCardId) return; // No highlight on own group enter
+
+
+         if (targetGroup) {
             targetGroup.classList.add('drag-over-group');
          } else if (targetCardsContainer) {
              targetCardsContainer.classList.add('drag-over-empty');
+         } else if (targetCard) {
+             targetCard.classList.add('drag-over-card');
          }
     }
 
     function handleDragLeave(event) {
          event.stopPropagation();
-        // More robust leave handling: only remove class if moving outside the element entirely
-        const relatedTarget = event.relatedTarget; // Where the mouse is going
-        const currentTarget = event.currentTarget; // The element firing the event
+        const relatedTarget = event.relatedTarget;
+        const currentTarget = event.currentTarget; // Element the listener is attached to
 
-         // Check if the relatedTarget is outside the currentTarget
-         if (currentTarget && (!relatedTarget || !currentTarget.contains(relatedTarget))) {
+        // Check if leaving the element the listener is on, or one of its valid drop target children
+         const leavingValidTarget = currentTarget.classList.contains('card') ||
+                                 currentTarget.classList.contains('card-group') ||
+                                 currentTarget.classList.contains('cards-container');
+
+        if (leavingValidTarget && (!relatedTarget || !currentTarget.contains(relatedTarget))) {
              currentTarget.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty');
 
-             // Hide indicator only if leaving a container where it was shown
-              if (dragIndicator && dragIndicator.parentNode === currentTarget) {
+              // Hide indicator only if leaving a container where it was shown AND moving outside it
+              if (dragIndicator && dragIndicator.parentNode === currentTarget && !currentTarget.contains(relatedTarget)) {
                    dragIndicator.style.display = 'none';
               }
+        }
+        // Also clear children if leaving container
+         if (currentTarget.classList.contains('cards-container') || currentTarget.classList.contains('card-group')) {
+            if (!currentTarget.contains(relatedTarget)) { // If mouse truly left the container
+                currentTarget.querySelectorAll('.drag-over-card, .drag-over-group, .drag-over-empty')
+                    .forEach(el => el.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty'));
+            }
          }
     }
 
     function handleDrop(event) {
-        event.preventDefault(); // *** CRITICAL: Allow drop ***
-        event.stopPropagation(); // Prevent drop bubbling to parent containers
+        event.preventDefault();
+        event.stopPropagation();
 
         console.log("Drop event fired");
 
         const droppedCardId = event.dataTransfer.getData('text/plain');
-        // Ensure we have the card we started dragging
         if (!droppedCardId || !draggedCardId || droppedCardId !== draggedCardId) {
-            console.warn("Drop aborted: Mismatched or missing card ID.", { droppedCardId, draggedCardId });
+            console.warn("Drop aborted: Mismatched or missing card ID.");
             clearDragStyles();
-            draggedCardId = null; // Reset dragged card ID
+            draggedCardId = null;
             return;
         }
 
@@ -677,7 +726,6 @@ document.addEventListener('DOMContentLoaded', () => {
              return;
         }
 
-        // Find where the indicator ended up - this is our drop location
         if (!dragIndicator || dragIndicator.style.display === 'none' || !dragIndicator.parentNode) {
             console.warn("Drop aborted: No valid drop indicator position found.");
             clearDragStyles();
@@ -686,7 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const indicatorParent = dragIndicator.parentNode;
-        const insertBeforeElement = dragIndicator.nextElementSibling; // The element *after* the indicator
+        const insertBeforeElement = dragIndicator.nextElementSibling;
 
         let targetColumnIndex = -1;
         let newParentId = null;
@@ -701,11 +749,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         targetColumnIndex = getColumnIndex(targetColumnEl);
 
-
         if (indicatorParent.classList.contains('card-group')) {
-             // Dropped within a group
              newParentId = indicatorParent.dataset.parentId;
-             // *** CONSTRAINT: Final check - cannot drop into own child group ***
              if (newParentId === droppedCardId) {
                  console.warn("Drop aborted: Cannot drop into own child group (final check).");
                  clearDragStyles();
@@ -713,15 +758,16 @@ document.addEventListener('DOMContentLoaded', () => {
                  return;
              }
         } else if (indicatorParent.classList.contains('cards-container')) {
-             // Dropped directly into a column's main container
-             if (targetColumnIndex === 0) {
-                 newParentId = null; // Root card in the first column
-             } else {
-                 // If not column 0, assume it's becoming a root card in that column (if allowed)
-                 // This case might need refinement based on exact desired behavior for non-col-0 root drops
-                 newParentId = null;
-                  console.log(`Card dropped as root in column ${targetColumnIndex}`);
-             }
+            // Dropped directly into a column's main container
+            newParentId = null; // Assume root unless specific logic dictates otherwise
+            // Ensure this is allowed (col 0 or moving existing root)
+            const draggedCardIsRoot = !droppedCard.parentId;
+            if(targetColumnIndex > 0 && !draggedCardIsRoot) {
+                 console.warn(`Drop aborted: Cannot drop non-root card into empty space of column ${targetColumnIndex}.`);
+                 clearDragStyles();
+                 draggedCardId = null;
+                 return;
+            }
         } else {
             console.warn("Drop aborted: Indicator parent is neither group nor container.", indicatorParent);
             clearDragStyles();
@@ -729,41 +775,39 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Determine the ID of the card to insert before
         if (insertBeforeElement && insertBeforeElement.classList.contains('card')) {
             insertBeforeCardId = insertBeforeElement.dataset.cardId;
         } else if (insertBeforeElement && insertBeforeElement.classList.contains('card-group')) {
-             // If dropping before a group, find the first card *within* that group, if any
              const firstCardInGroup = insertBeforeElement.querySelector('.card');
              insertBeforeCardId = firstCardInGroup ? firstCardInGroup.dataset.cardId : null;
-             // If dropping before a group, it implies the card should logically come before all children of that group.
-             // The moveCard logic needs to handle this ordering correctly.
-             // Setting newParentId correctly is the most crucial part here.
-        }
-         else {
-             insertBeforeCardId = null; // Append at the end of the list (group or root)
+        } else {
+             insertBeforeCardId = null; // Append
         }
 
+        // Final check: ensure we are not inserting relative to self if somehow indicator ended up there
+        if (insertBeforeCardId === droppedCardId) {
+             console.warn("Drop aborted: Attempting to insert relative to self.");
+              clearDragStyles();
+              draggedCardId = null;
+              return;
+        }
 
         console.log(`Drop details: Card ${droppedCardId} -> Col ${targetColumnIndex}, Parent ${newParentId || 'root'}, Before ${insertBeforeCardId || 'end'}`);
 
-        // --- Perform the Move ---
         moveCard(droppedCardId, targetColumnIndex, newParentId, insertBeforeCardId);
-        clearDragStyles(); // Clean up indicator and styles AFTER move is processed
-        draggedCardId = null; // Reset dragged card ID
+        clearDragStyles();
+        draggedCardId = null;
     }
 
-     function clearDragStyles(removeIndicatorInstance = true) {
-         // Remove visual feedback classes
+    function clearDragStyles(removeIndicatorInstance = true) {
          document.querySelectorAll('.drag-over-card, .drag-over-group, .drag-over-empty').forEach(el => {
              el.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty');
          });
-         // Hide or remove the indicator
          if (dragIndicator) {
              dragIndicator.style.display = 'none';
              if (removeIndicatorInstance && dragIndicator.parentNode) {
                  dragIndicator.parentNode.removeChild(dragIndicator);
-                 dragIndicator = null; // Allow it to be recreated on next drag
+                 dragIndicator = null;
              }
          }
      }
@@ -771,18 +815,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Core Logic Functions ---
 
     function addCard(columnIndex, parentId = null) {
-        // Ensure parent exists if specified
         if (parentId && !getCard(parentId)) {
             console.error(`Cannot add card: Parent ${parentId} not found.`);
             return;
         }
-        // Ensure target column is valid (exists or is next logical column)
         const maxExistingColumn = columnsContainer.children.length - 1;
         if (columnIndex < 0 || columnIndex > maxExistingColumn + 1) {
              console.error(`Cannot add card: Invalid column index ${columnIndex}. Max is ${maxExistingColumn + 1}`);
              return;
         }
-
 
         const newCardId = generateId();
         const newCard = {
@@ -790,56 +831,59 @@ document.addEventListener('DOMContentLoaded', () => {
             content: '',
             parentId: parentId,
             columnIndex: columnIndex,
-            order: 0, // Will be set below
-            color: '' // Will be calculated
+            order: 0, // Set below
+            color: '' // Calculated below
         };
 
-        // Calculate Color
-        newCard.color = getColorForCard(newCard);
+        appData.cards[newCardId] = newCard; // Add to data *before* calculating order/color
 
-        appData.cards[newCardId] = newCard;
-
-        // Determine initial order (append to the relevant list)
+        // Determine order (append)
         let siblings;
         if (parentId) {
-            siblings = getChildCards(parentId, columnIndex);
+            siblings = getChildCards(parentId, columnIndex).filter(c => c.id !== newCardId);
         } else {
-            siblings = getColumnCards(columnIndex);
+            siblings = getColumnCards(columnIndex).filter(c => c.id !== newCardId);
         }
-        // Filter out the card itself if it somehow got included (shouldn't happen on add)
-        siblings = siblings.filter(c => c.id !== newCardId);
         newCard.order = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
 
-        // Ensure the target column exists visually *before* rendering content
+        // Calculate Color (depends on order for root cards)
+        newCard.color = getColorForCard(newCard);
+
+        // If adding a root card, existing root card colors might need update if order affects hue
+        if (columnIndex === 0 && !parentId) {
+             const rootCards = getColumnCards(0);
+             rootCards.forEach(rc => {
+                  const newColor = getColorForCard(rc);
+                  if (rc.color !== newColor) {
+                      rc.color = newColor;
+                      // Update element if already rendered (though we re-render below)
+                      const rcEl = getCardElement(rc.id);
+                      if (rcEl) rcEl.style.backgroundColor = rc.color;
+                  }
+             });
+        }
+
+
         while (columnsContainer.children.length <= columnIndex) {
-             addColumn(); // This adds visually and updates data model
+             addColumn();
         }
 
-        // Re-render the column where the card was added
+        // Re-render affected columns
         const targetColumnEl = getColumnElementByIndex(columnIndex);
-        if (targetColumnEl) {
-            renderColumnContent(targetColumnEl, columnIndex);
-        } else {
-             console.error("Failed to find target column element after adding column.");
-             // Might need full re-render as fallback
-             renderApp();
-        }
+        if (targetColumnEl) renderColumnContent(targetColumnEl, columnIndex);
 
-        // Also re-render the *next* column to ensure the new card's group placeholder appears
-         if (columnsContainer.children.length > columnIndex + 1) {
+        if (columnsContainer.children.length > columnIndex + 1) {
              const nextColumnEl = getColumnElementByIndex(columnIndex + 1);
              if (nextColumnEl) renderColumnContent(nextColumnEl, columnIndex + 1);
-         }
+        }
 
         saveData();
 
-        // Focus the new card's textarea after render completes
         requestAnimationFrame(() => {
              const newCardEl = getCardElement(newCardId);
              if (newCardEl) {
                  const textarea = newCardEl.querySelector('.card-content');
                   if(textarea) textarea.focus();
-                  // Scroll into view slightly?
                   newCardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
              }
         });
@@ -852,189 +896,174 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const descendantIds = getDescendantIds(cardId);
         const allIdsToDelete = [cardId, ...descendantIds];
-        const numDescendants = descendantIds.length; // Store count before modification
+        const numDescendants = descendantIds.length;
+        const wasRoot = !card.parentId && card.columnIndex === 0;
 
         if (!confirm(`Delete card #${cardId.slice(-4)} and its ${numDescendants} descendant(s)?`)) {
             return;
         }
 
         const affectedColumns = new Set();
-        affectedColumns.add(card.columnIndex); // Card's own column
-        // If card had children, the next column (where its group was) is also affected
+        affectedColumns.add(card.columnIndex);
         if (numDescendants > 0 && columnsContainer.children.length > card.columnIndex + 1) {
              affectedColumns.add(card.columnIndex + 1);
         }
 
-
         allIdsToDelete.forEach(id => {
             const c = getCard(id);
             if (c) {
-                 affectedColumns.add(c.columnIndex); // Column of each descendant
-                 // Also the column *after* the descendant if it had children itself (redundant but safe)
-                  if (columnsContainer.children.length > c.columnIndex + 1) {
+                 affectedColumns.add(c.columnIndex);
+                 if (columnsContainer.children.length > c.columnIndex + 1) {
                      affectedColumns.add(c.columnIndex + 1);
                  }
                  delete appData.cards[id];
             }
         });
 
-        // Re-render affected columns in order
-        Array.from(affectedColumns).sort((a,b)=>a-b).forEach(colIndex => {
+         // If a root card was deleted, other root cards might need color updates
+         let rootColorsNeedUpdate = wasRoot;
+
+         // Re-render affected columns first
+         Array.from(affectedColumns).sort((a,b)=>a-b).forEach(colIndex => {
              const colEl = getColumnElementByIndex(colIndex);
              if (colEl) {
                  renderColumnContent(colEl, colIndex);
              }
-        });
+         });
 
-        // Check if we can now delete the rightmost column
+        // Now, if needed, update root colors and re-render column 0
+        if (rootColorsNeedUpdate) {
+             const rootCards = getColumnCards(0);
+             let updated = false;
+             rootCards.forEach(rc => {
+                  const newColor = getColorForCard(rc);
+                  if (rc.color !== newColor) {
+                      rc.color = newColor;
+                      updated = true;
+                  }
+             });
+             if (updated) {
+                  const col0El = getColumnElementByIndex(0);
+                  if (col0El) renderColumnContent(col0El, 0);
+             }
+        }
+
         updateAllToolbarButtons();
-
         saveData();
         console.log(`Card ${cardId} and ${numDescendants} descendants deleted.`);
     }
 
     function addColumnInternal(doSave = true) {
-        const newIndex = appData.columns.length; // Index will be the current length
-        appData.columns.push({ id: `col-${generateId()}` }); // Store some minimal column data
+        const newIndex = appData.columns.length;
+        appData.columns.push({ id: `col-${generateId()}` });
         console.log("Internal add column, new count:", appData.columns.length);
         if (doSave) saveData();
-        return newIndex; // Return the index of the added column
+        return newIndex;
     }
 
-
     function addColumn() {
-         const newIndex = addColumnInternal(); // Adds to appData and saves
-
-         // Create and append the new column element
+         const newIndex = addColumnInternal();
          const columnEl = createColumnElement(newIndex);
          columnsContainer.appendChild(columnEl);
-         renderColumnContent(columnEl, newIndex); // Render its (empty) content
-
-         // Update toolbars for the new and previous last column
-         updateAllToolbarButtons(); // Refresh all toolbars is simplest
-
+         renderColumnContent(columnEl, newIndex);
+         updateAllToolbarButtons();
          console.log(`Column ${newIndex} added visually.`);
-         // Scroll columns container to show the new column?
          columnsContainer.scrollLeft = columnsContainer.scrollWidth;
     }
 
     function deleteColumn(columnIndex) {
         const numColumns = columnsContainer.children.length;
         const columnEl = getColumnElementByIndex(columnIndex);
-        // Re-check conditions precisely before deleting
         const isRightmost = columnIndex === numColumns - 1;
         const columnCards = Object.values(appData.cards).filter(card => card.columnIndex === columnIndex);
         const canDelete = isRightmost && numColumns > MIN_COLUMNS && columnCards.length === 0;
 
-
         if (!canDelete) {
-            console.warn("Cannot delete column: Conditions not met.");
             alert("Cannot delete this column. It might not be the rightmost, the minimum number of columns hasn't been exceeded, or it's not empty.");
             return;
         }
+        if (!confirm("Delete this empty column?")) return;
 
-        if (!confirm("Delete this empty column?")) {
-            return;
-        }
-
-        // Remove from DOM
         if (columnEl && columnEl.parentNode === columnsContainer) {
             columnsContainer.removeChild(columnEl);
         } else {
-            console.error("Could not find column element to remove from DOM.");
-            // Attempt recovery by re-rendering?
-            renderApp();
-            return;
+            renderApp(); return; // Failsafe
         }
 
-
-        // Remove from data model (assuming simple array structure)
-        if(appData.columns.length > columnIndex) { // Sanity check
-             appData.columns.splice(columnIndex, 1); // Remove the element at the index
-        } else {
-             console.error("Column index out of bounds for appData.columns");
+        if(appData.columns.length > columnIndex) {
+             appData.columns.splice(columnIndex, 1);
         }
 
-
-        // Update toolbar of the new rightmost column
-        updateAllToolbarButtons(); // Refresh all
-
+        updateAllToolbarButtons();
         saveData();
         console.log(`Column ${columnIndex} deleted.`);
     }
 
-     function moveCard(cardId, targetColumnIndex, newParentId, insertBeforeCardId) {
+    function moveCard(cardId, targetColumnIndex, newParentId, insertBeforeCardId) {
         const card = getCard(cardId);
-        if (!card) {
-             console.error("MoveCard failed: Card not found", cardId);
-             return;
-        }
+        if (!card) return;
 
         const originalColumnIndex = card.columnIndex;
         const originalParentId = card.parentId;
-        const originalOrder = card.order;
+        const wasRoot = !originalParentId && originalColumnIndex === 0;
+        const isBecomingRoot = !newParentId && targetColumnIndex === 0;
 
-        // Prevent dragging a card to be its own descendant
+        // Prevent dropping into self/descendant
         let tempParentId = newParentId;
         while(tempParentId) {
             if (tempParentId === cardId) {
-                console.warn("Move Aborted: Cannot move card inside itself or its descendants.");
-                return; // Abort the move
+                 console.warn("Move Aborted: Cannot move card inside itself or descendants.");
+                 return;
             }
             tempParentId = getCard(tempParentId)?.parentId;
         }
 
-        // --- Update the card itself ---
+        // --- Update card basic properties ---
         card.columnIndex = targetColumnIndex;
         card.parentId = newParentId;
-        card.color = getColorForCard(card); // Recalculate color based on new hierarchy
+        // Order and color calculated below, after siblings are known
 
         // --- Calculate new order ---
         let siblings;
         if (newParentId) {
-            siblings = getChildCards(newParentId, targetColumnIndex).filter(c => c.id !== cardId); // Exclude self
+            siblings = getChildCards(newParentId, targetColumnIndex).filter(c => c.id !== cardId);
         } else {
-            siblings = getColumnCards(targetColumnIndex).filter(c => c.id !== cardId); // Exclude self
+            siblings = getColumnCards(targetColumnIndex).filter(c => c.id !== cardId);
         }
-        // siblings are already sorted by getChildCards/getColumnCards
+        // siblings are already sorted
 
         let newOrder;
-        if (insertBeforeCardId) {
+        if (insertBeforeCardId && insertBeforeCardId !== cardId) {
             const insertBeforeCard = getCard(insertBeforeCardId);
-            if (insertBeforeCard && insertBeforeCard.id !== cardId) { // Ensure it's not itself
+            if (insertBeforeCard) {
                  const insertBeforeOrder = insertBeforeCard.order;
-                 // Find the order of the card *immediately* before the insert point in the *current* siblings list
-                 let prevOrder = -1; // Default if inserting at the beginning
+                 let prevOrder = -1;
                  const insertBeforeIndex = siblings.findIndex(c => c.id === insertBeforeCardId);
                  if (insertBeforeIndex > 0) {
                      prevOrder = siblings[insertBeforeIndex - 1].order;
                  } else if (insertBeforeIndex === -1) {
-                      // insertBeforeCardId not found among siblings (maybe it's in a different group/level?)
-                      // This indicates an issue in drop logic - fall back to appending?
-                      console.warn(`insertBeforeCardId ${insertBeforeCardId} not found among siblings of new parent ${newParentId}. Appending instead.`);
+                      console.warn(`insertBeforeCardId ${insertBeforeCardId} not found among siblings. Appending.`);
                       newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
                  }
-
-                 // Calculate order only if insertBeforeCardId was valid among siblings
                  if (insertBeforeIndex !== -1) {
-                     newOrder = (prevOrder + insertBeforeOrder) / 2.0; // Average order
+                     newOrder = (prevOrder + insertBeforeOrder) / 2.0;
                  }
-
             } else {
-                 // insertBeforeCardId provided but invalid? Append to end.
-                 console.warn(`Invalid insertBeforeCardId ${insertBeforeCardId}. Appending instead.`);
+                 console.warn(`Invalid insertBeforeCardId ${insertBeforeCardId}. Appending.`);
                  newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
             }
         } else {
-            // Append to the end
             newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
         }
         card.order = newOrder;
 
+        // --- Update Color (must be after order is set for root cards) ---
+        card.color = getColorForCard(card);
 
         // --- Update descendants recursively ---
         const columnDiff = targetColumnIndex - originalColumnIndex;
-        const affectedDescendants = []; // Keep track for rendering
+        const affectedDescendants = [];
+        let maxDescendantCol = targetColumnIndex; // Track max column needed
         if (columnDiff !== 0) {
             const descendants = getDescendantIds(cardId);
             descendants.forEach(descId => {
@@ -1043,63 +1072,71 @@ document.addEventListener('DOMContentLoaded', () => {
                     descCard.columnIndex += columnDiff;
                     descCard.color = getColorForCard(descCard); // Update descendant colors
                     affectedDescendants.push(descCard);
+                    maxDescendantCol = Math.max(maxDescendantCol, descCard.columnIndex);
                 }
             });
+        } else {
+             // If column didn't change, descendants might still need color update if parent color changed
+             const descendants = getDescendantIds(cardId);
+             descendants.forEach(descId => {
+                 const descCard = getCard(descId);
+                 if (descCard) {
+                     descCard.color = getColorForCard(descCard);
+                     affectedDescendants.push(descCard); // Track for potential re-render
+                 }
+             });
         }
 
+
+        // --- Update colors of other root cards if hierarchy changed ---
+        let rootColorsNeedUpdate = false;
+        if (wasRoot !== isBecomingRoot || (isBecomingRoot && siblings.length > 0)) {
+             // If a card became root, left root, or reordered among roots
+             rootColorsNeedUpdate = true;
+        }
+
+
         // --- Ensure enough columns exist ---
-        let maxCol = targetColumnIndex;
-        affectedDescendants.forEach(desc => { maxCol = Math.max(maxCol, desc.columnIndex); });
-        while (columnsContainer.children.length <= maxCol) {
-             addColumn(); // Adds column visually and updates data model, triggers save
+        while (columnsContainer.children.length <= maxDescendantCol) {
+             addColumn();
         }
 
         // --- Determine Columns to Re-render ---
         const columnsToRender = new Set();
-        // Original location
         columnsToRender.add(originalColumnIndex);
-        if (originalParentId) {
-             const originalParent = getCard(originalParentId);
-             if (originalParent) columnsToRender.add(originalParent.columnIndex + 1); // Column where original group was
-        }
-        // New location
         columnsToRender.add(targetColumnIndex);
-        if (newParentId) {
-             const newParent = getCard(newParentId);
-              if (newParent) columnsToRender.add(newParent.columnIndex + 1); // Column where new group is
-        }
-        // Columns of moved descendants
-         affectedDescendants.forEach(desc => {
-             columnsToRender.add(desc.columnIndex); // New column index
-             columnsToRender.add(desc.columnIndex - columnDiff); // Original column index
-             // Also columns where their groups might appear/disappear
-             const descParent = getCard(desc.parentId);
-             if (descParent) {
-                  columnsToRender.add(descParent.columnIndex + 1);
-             }
-         });
-        // Also the column *after* the moved card's original and new positions
+        if (originalParentId) columnsToRender.add(getCard(originalParentId)?.columnIndex + 1);
+        if (newParentId) columnsToRender.add(getCard(newParentId)?.columnIndex + 1);
+        affectedDescendants.forEach(desc => columnsToRender.add(desc.columnIndex));
+        // Add columns next to original/target if they exist
         if (columnsContainer.children.length > originalColumnIndex + 1) columnsToRender.add(originalColumnIndex + 1);
         if (columnsContainer.children.length > targetColumnIndex + 1) columnsToRender.add(targetColumnIndex + 1);
 
+        // Filter out invalid column indices (e.g., -1 if parent was missing)
+        const validColumnsToRender = Array.from(columnsToRender).filter(idx => idx !== undefined && idx !== null && idx >= 0).sort((a, b) => a - b);
 
-        // --- Perform the render after all data changes ---
-        console.log("Re-rendering columns after move:", Array.from(columnsToRender).sort((a,b)=>a-b));
-        Array.from(columnsToRender).sort((a,b)=>a-b).forEach(index => {
-            if (index >= 0) { // Ensure index is valid
-                const colEl = getColumnElementByIndex(index);
-                if (colEl) {
-                    renderColumnContent(colEl, index);
-                } else {
-                     console.warn(`Attempted to re-render non-existent column at index ${index}`);
-                     // If a column somehow disappeared, a full re-render might be needed
-                     // renderApp(); // Use cautiously - can be slow
-                }
+        // --- Update root colors if needed ---
+        if (rootColorsNeedUpdate) {
+             const rootCards = getColumnCards(0); // Get current roots
+             rootCards.forEach(rc => {
+                  rc.color = getColorForCard(rc); // Recalculate based on new order
+             });
+             validColumnsToRender.push(0); // Ensure column 0 is re-rendered
+        }
+
+        // --- Perform the render ---
+        console.log("Re-rendering columns after move:", [...new Set(validColumnsToRender)].sort((a,b)=>a-b)); // Deduplicate and sort
+        [...new Set(validColumnsToRender)].sort((a,b)=>a-b).forEach(index => {
+            const colEl = getColumnElementByIndex(index);
+            if (colEl) {
+                renderColumnContent(colEl, index);
+            } else {
+                 console.warn(`Attempted to re-render non-existent column at index ${index}`);
             }
         });
 
-        updateAllToolbarButtons(); // Update button states
-        saveData(); // Save the changes
+        updateAllToolbarButtons();
+        saveData();
         console.log(`Card ${cardId} moved SUCCESS -> Col ${targetColumnIndex}, Parent: ${newParentId || 'root'}, Order: ${card.order}`);
     }
 
@@ -1109,16 +1146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     // --- Initial Load ---
-    loadData(); // Load data and perform initial render
-
-    // --- Global Event Listener for focus out (alternative to per-textarea blur) ---
-    // document.addEventListener('focusout', (event) => {
-    //     if (event.target.classList.contains('card-content')) {
-    //         handleTextareaBlur(event); // Reuse existing handler logic
-    //     }
-    // });
-
+    loadData();
 
 }); // End DOMContentLoaded
