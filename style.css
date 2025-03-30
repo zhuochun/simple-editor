@@ -1,0 +1,159 @@
+/* Add styles for the new child group */
+.child-group {
+    /* Border color will be set dynamically via JS */
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 15px; /* Increased spacing between groups */
+    background-color: rgba(0, 0, 0, 0.02);
+    /* Add min-height if you want drop zones in empty groups */
+    min-height: 20px;
+    transition: border-color 0.3s ease; /* Smooth transition if parent color changes */
+}
+
+/* Adjust card margin when inside a group */
+.child-group > .card {
+    margin-bottom: 8px; /* Slightly less margin inside group */
+}
+.child-group > .card:last-child {
+    margin-bottom: 0; /* No margin for last card in group */
+}
+
+/* Other styles remain the same... */
+body {
+    font-family: sans-serif;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    overflow: hidden; /* Prevent body scroll, columns handle scroll */
+    background-color: #f0f0f0;
+}
+
+#canvas {
+    display: flex;
+    flex-grow: 1;
+    overflow-x: auto; /* Allow horizontal scrolling for many columns */
+    height: 100%;
+}
+
+#columns-container {
+    display: flex;
+    min-width: 100%; /* Ensure it tries to fill the canvas */
+    height: 100%;
+}
+
+.column {
+    min-width: 280px;
+    /* width: 280px; /* Removed fixed width */
+    max-width: 400px; /* Increased max width slightly */
+    flex-grow: 1; /* Allow columns to grow */
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: #e0e0e0;
+    border-right: 1px solid #ccc;
+    flex-shrink: 0; /* Prevent columns from shrinking */
+}
+
+.column-toolbar {
+    padding: 8px;
+    background-color: #d0d0d0;
+    border-bottom: 1px solid #ccc;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap; /* Allow buttons to wrap on smaller widths */
+}
+
+.column-toolbar button {
+    padding: 5px 8px;
+    font-size: 0.8em;
+    cursor: pointer;
+    border: 1px solid #aaa;
+    background-color: #eee;
+    border-radius: 3px;
+}
+.column-toolbar button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+
+.cards-container {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px;
+    min-height: 50px; /* Area for double click */
+}
+
+.card {
+    background-color: white;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+}
+
+.card.dragging {
+    opacity: 0.5;
+    border: 2px dashed #000;
+}
+
+.card.drag-over-indicator {
+   border-top: 2px solid blue;
+   margin-top: -2px; /* Adjust to keep spacing consistent */
+}
+
+
+.card-header {
+    background-color: #f8f8f8;
+    padding: 5px 8px;
+    border-bottom: 1px solid #eee;
+    cursor: grab;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+    min-height: 20px; /* Ensure header has some height */
+}
+
+.card-header .controls button {
+    margin-left: 5px;
+    font-size: 0.85em;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    color: #333;
+}
+.card-header .controls button:hover {
+    color: #000;
+    text-decoration: underline;
+}
+
+
+.card-content {
+    padding: 10px;
+    min-height: 40px;
+    outline: none;
+    white-space: pre-wrap; /* Preserve line breaks */
+    word-wrap: break-word; /* Break long words */
+}
+
+.card-content:focus {
+    /* Slightly lighter when editing - uses card background now */
+}
+
+/* Placeholder for drag-over visual cue */
+.drag-placeholder {
+    height: 40px;
+    background-color: rgba(0, 0, 255, 0.1);
+    border: 1px dashed blue;
+    margin-bottom: 10px; /* Match card margin initially */
+    border-radius: 4px;
+}
+.child-group > .drag-placeholder {
+    margin-bottom: 8px; /* Match card margin inside group */
+}
