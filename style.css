@@ -26,7 +26,7 @@ body {
 .column {
     background-color: #e0e0e0;
     border-radius: 5px;
-    width: 300px;
+    width: 450px;
     flex-shrink: 0; /* Prevent columns from shrinking */
     height: 100%;
     display: flex;
@@ -39,6 +39,7 @@ body {
     top: 0;
     background-color: #d0d0d0;
     padding: 8px;
+    height: 28px;
     border-bottom: 1px solid #ccc;
     z-index: 10;
     display: flex;
@@ -124,7 +125,7 @@ body {
 }
 
 .card-content {
-    width: calc(100% - 20px); /* Full width minus padding */
+    width: calc(100% - 5px); /* Full width minus padding */
     min-height: 50px;
     padding: 10px;
     border: none;
