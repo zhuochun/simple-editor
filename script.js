@@ -5,11 +5,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragIndicator = null;
     const MIN_COLUMNS = 3;
     const BASE_COLOR_HUE = 200; // Starting Hue for first root card
-    const HUE_ROTATION_STEP = 35; // Degrees to shift hue for each subsequent root card
+    const HUE_ROTATION_STEP = 30; // Degrees to shift hue for each subsequent root card
     const BASE_COLOR_SATURATION = 50; // Adjusted base saturation
     const BASE_COLOR_LIGHTNESS = 92; // Adjusted base lightness (very light)
-    const LIGHTNESS_STEP_DOWN = 8; // How much darker each level gets
-    const SATURATION_STEP_UP = 5; // How much more saturated each level gets
+    const LIGHTNESS_STEP_DOWN = 3; // How much darker each level gets
+    const SATURATION_STEP_UP = 3; // How much more saturated each level gets
 
     // --- Data Management ---
 
@@ -194,8 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const match = baseColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
             if (match) {
                 const [, h, s, l] = match.map(Number);
-                const highlightL = Math.max(10, l - 15); // Darker
-                const highlightS = Math.min(100, s + 15); // More saturated
+                const highlightL = Math.max(10, l - 5); // Darker
+                const highlightS = Math.min(100, s + 5); // More saturated
                 return `hsl(${h}, ${highlightS}%, ${highlightL}%)`;
             }
         } catch (e) { console.warn("Could not parse color for highlight:", baseColor); }
@@ -431,40 +431,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function highlightHierarchy(cardId) {
-         clearHighlights();
+        clearHighlights(); // Clear previous highlights first
 
-         const targetCard = getCard(cardId);
-         if (!targetCard) return;
+        const targetCard = getCard(cardId);
+        if (!targetCard) return;
 
-         const ancestors = getAncestorIds(cardId);
-         const descendants = getDescendantIds(cardId);
-         const allToHighlight = [cardId, ...ancestors, ...descendants];
+        const ancestors = getAncestorIds(cardId);
+        const descendants = getDescendantIds(cardId);
+        const allToHighlight = [cardId, ...ancestors, ...descendants];
 
-         allToHighlight.forEach(id => {
-             const cardEl = getCardElement(id);
-             if (cardEl) {
-                 cardEl.classList.add('highlight');
-                 // Use existing color recalculation for highlight effect
-                 const baseColor = cardEl.style.backgroundColor || getColorForCard(getCard(id)); // Get base color
-                 const highlightBg = getHighlightColor(baseColor); // Calculate highlight
-                 cardEl.style.backgroundColor = highlightBg; // Apply highlight
-             }
-             const groupEl = getGroupElement(id);
-             if (groupEl) {
-                  groupEl.classList.add('highlight');
-             }
-         });
+        allToHighlight.forEach(id => {
+            const cardEl = getCardElement(id);
+            const cardData = getCard(id); // Get the card's data object
+
+            if (cardEl && cardData) { // Ensure both the element and its data exist
+                cardEl.classList.add('highlight');
+
+                // *** CORRECTED PART ***
+                // Always get the definitive base color, preferably from storage, fallback to calculation
+                let baseColor = cardData.color;
+                if (!baseColor) {
+                    // If color isn't stored (shouldn't happen often after load/add/move), calculate and store it
+                    baseColor = getColorForCard(cardData);
+                    cardData.color = baseColor; // Store the calculated color
+                    console.warn(`Recalculated and stored missing color for card ${id} during highlight.`);
+                }
+
+                // Calculate highlight color based *only* on the base color
+                const highlightBg = getHighlightColor(baseColor);
+
+                // Apply the calculated highlight color
+                cardEl.style.backgroundColor = highlightBg;
+
+                // Debugging log: Check baseColor and highlightBg
+                // console.log(`Highlighting Card ${id}: Base='${baseColor}', Highlight='${highlightBg}'`);
+
+            }
+
+            // Highlight the corresponding group header if it's a parent/ancestor
+            const groupEl = getGroupElement(id);
+            if (groupEl) {
+                groupEl.classList.add('highlight');
+            }
+        });
     }
 
     function clearHighlights() {
         document.querySelectorAll('.card.highlight, .card.editing, .card-group.highlight').forEach(el => {
             el.classList.remove('highlight', 'editing');
             if (el.classList.contains('card')) {
-                 const card = getCard(el.dataset.cardId);
-                 // Re-apply the correct *base* color
-                 if(card) el.style.backgroundColor = card.color || getColorForCard(card); // Ensure base color is reapplied
-                 else el.style.backgroundColor = '';
+                const cardId = el.dataset.cardId;
+                const card = getCard(cardId);
+                // Restore the definitive base color from the card data
+                if(card && card.color) {
+                    el.style.backgroundColor = card.color;
+                } else if (card) {
+                    // Fallback if color somehow got removed from data - recalculate
+                    el.style.backgroundColor = getColorForCard(card);
+                } else {
+                    // Fallback if card data is gone
+                    el.style.backgroundColor = '';
+                }
             }
+            // No background color change needed for group headers, just remove class
         });
     }
 
