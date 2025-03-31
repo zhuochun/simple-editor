@@ -2112,28 +2112,69 @@ document.addEventListener('DOMContentLoaded', () => {
             onDone: (fullResponse) => {
                 // Process the full response here
                 const parts = fullResponse.split('---').map(p => p.trim()).filter(p => p.length > 0);
+                let lastCardId = null; // Keep track of the last card processed/created
 
-                // Delete the temporary card first
-                deleteCard(tempCardId); // This handles DOM removal and data update
+                if (parts.length > 0) {
+                    // Reuse the temporary card for the first part
+                    const firstPartContent = parts[0];
+                    const tempCardData = getCard(tempCardId);
 
-                // Create new cards for each part
-                let lastCreatedCardId = null;
-                parts.forEach((partContent) => {
-                    // Add card sequentially in the target column as children of original card
-                    const newChildId = addCard(targetColumnIndex, parentIdForNewCards, partContent, null); // Append within group
-                    if(newChildId) lastCreatedCardId = newChildId;
-                });
+                    if (tempCardData && tempTextarea) {
+                        tempTextarea.value = firstPartContent; // Update textarea content
+                        tempTextarea.classList.remove('ai-loading');
+                        autoResizeTextarea({ target: tempTextarea });
+                        tempCardData.content = firstPartContent; // Update data model
+                        lastCardId = tempCardId; // This is now the first real card
+                        console.log(`AI Breakdown: Reused temp card ${tempCardId} for first part.`);
+                    } else {
+                        console.error("Could not find temp card data or textarea to reuse.");
+                        // Fallback: delete the temp card if it couldn't be reused properly
+                        deleteCard(tempCardId);
+                    }
 
-                // Ensure save after all cards are potentially added
+                    // Create new cards for the remaining parts
+                    if (parts.length > 1) {
+                        let insertAfterCardId = lastCardId; // Start inserting after the reused card
+                        parts.slice(1).forEach((partContent) => {
+                            // Determine the ID of the card to insert *before* (null means append)
+                            let insertBeforeId = null;
+                            if (insertAfterCardId) {
+                                const insertAfterCard = getCard(insertAfterCardId);
+                                if (insertAfterCard) {
+                                    // Find the next sibling in the data model to insert before
+                                    let siblings;
+                                     if (insertAfterCard.parentId) siblings = getChildCards(insertAfterCard.parentId, insertAfterCard.columnIndex);
+                                     else siblings = getColumnCards(insertAfterCard.columnIndex);
+                                     const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
+                                     if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                                         insertBeforeId = siblings[currentIndex + 1].id;
+                                     }
+                                }
+                            }
+
+                            const newChildId = addCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
+                            if (newChildId) {
+                                lastCardId = newChildId; // Update lastCardId for the next iteration
+                                insertAfterCardId = newChildId; // Next card should be inserted after this one
+                            }
+                        });
+                    }
+                } else {
+                    // No valid parts returned, delete the temporary card
+                    console.log("AI Breakdown: No valid parts returned, deleting temp card.");
+                    deleteCard(tempCardId);
+                }
+
+                // Ensure save after all modifications
                 updateProjectLastModified();
                 saveProjectsData();
-                console.log(`AI Breakdown completed for card ${cardId}, created ${parts.length} children.`);
+                console.log(`AI Breakdown completed for card ${cardId}.`);
 
-                // Optional: scroll to the last created card
-                if(lastCreatedCardId) {
+                // Optional: scroll to the last card (either reused or newly created)
+                if (lastCardId) {
                     requestAnimationFrame(() => {
-                        const lastEl = getCardElement(lastCreatedCardId);
-                        if(lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        const lastEl = getCardElement(lastCardId);
+                        if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     });
                 }
             }
