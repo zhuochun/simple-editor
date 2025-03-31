@@ -1236,14 +1236,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update parent group header if this card is a parent
             const groupEl = getGroupElement(cardId);
             if (groupEl) {
-                 const groupHeader = groupEl.querySelector('.group-header strong');
                  const groupHeaderContainer = groupEl.querySelector('.group-header');
-                 if (groupHeader && groupHeaderContainer) {
-                     groupHeader.textContent = truncatedDisplayName;
-                     groupHeaderContainer.title = `Children of ${displayName}`;
+                 if (groupHeaderContainer) {
+                     // Reconstruct the header text including the prefix
+                     groupHeaderContainer.textContent = `>> ${truncatedDisplayName}`;
+                     groupHeaderContainer.title = `Children of ${displayName}`; // Update tooltip
                  }
             }
-
 
             input.remove(); // Remove the input field
             nameDisplaySpan.style.display = ''; // Show the span again
