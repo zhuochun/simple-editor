@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const BASE_COLOR_LIGHTNESS = 90;
     const LIGHTNESS_STEP_DOWN = 5;
     const SATURATION_STEP_UP = 5;
+    const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
 
@@ -580,15 +581,32 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!parentCard) return null;
 
         const groupEl = document.createElement('div');
-        const parentName = parentCard.name ? parentCard.name : `#${parentId.slice(-4)}`;
-        const truncatedParentName = parentName.length > 50 ? parentName.substring(0, 50) + '...' : parentName;
+        let groupHeaderText = '';
+        let groupHeaderTitle = '';
+
+        if (parentCard.name) {
+            // Parent has a name: Use the name
+            const truncatedParentName = parentCard.name.length > 50 ? parentCard.name.substring(0, 50) + '...' : parentCard.name;
+            groupHeaderText = `>> ${truncatedParentName}`;
+            groupHeaderTitle = `Children of ${parentCard.name}`;
+         } else {
+             // Parent has no name: Use ID + Content Preview
+             const idPart = `#${parentId.slice(-4)}`;
+             const contentPreview = parentCard.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
+             const ellipsis = (parentCard.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
+             const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
+             groupHeaderText = `>> ${idPart}${previewText}`;
+            // Tooltip shows ID and full content if previewed, otherwise just ID
+            groupHeaderTitle = `Children of ${idPart}${contentPreview ? `: ${parentCard.content?.trim()}` : ''}`;
+        }
+
 
         groupEl.id = `group-${parentId}`;
         groupEl.className = 'card-group';
         groupEl.dataset.parentId = parentId;
 
         groupEl.innerHTML = `
-            <div class="group-header" title="Children of ${parentName}">&gt;&gt; ${truncatedParentName}</div>
+            <div class="group-header" title="${groupHeaderTitle}">${groupHeaderText}</div>
         `;
 
         groupEl.addEventListener('dragover', handleDragOver);
@@ -1227,20 +1245,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`Card ${cardId} name updated to "${newName}" in project ${activeProjectId}.`);
             }
 
-            // Update display span content and title
+            // Update display span content and title (Reverted to original logic)
             const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
             const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
             nameDisplaySpan.textContent = truncatedDisplayName;
             nameDisplaySpan.title = displayName; // Update tooltip
 
-            // Update parent group header if this card is a parent
+            // Update parent group header if this card is a parent (using the NEW logic)
             const groupEl = getGroupElement(cardId);
             if (groupEl) {
                  const groupHeaderContainer = groupEl.querySelector('.group-header');
                  if (groupHeaderContainer) {
-                     // Reconstruct the header text including the prefix
-                     groupHeaderContainer.textContent = `>> ${truncatedDisplayName}`;
-                     groupHeaderContainer.title = `Children of ${displayName}`; // Update tooltip
+                     let groupHeaderText = '';
+                     let groupHeaderTitle = '';
+                     if (card.name) { // Use name if it exists now
+                         const truncatedParentName = card.name.length > 50 ? card.name.substring(0, 50) + '...' : card.name;
+                         groupHeaderText = `>> ${truncatedParentName}`;
+                         groupHeaderTitle = `Children of ${card.name}`;
+                     } else { // Otherwise use ID + Content Preview
+                         const idPart = `#${cardId.slice(-4)}`;
+                         const contentPreview = card.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
+                         const ellipsis = (card.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
+                         const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
+                         groupHeaderText = `>> ${idPart}${previewText}`;
+                         groupHeaderTitle = `Children of ${idPart}${contentPreview ? `: ${card.content?.trim()}` : ''}`;
+                     }
+                     groupHeaderContainer.textContent = groupHeaderText;
+                     groupHeaderContainer.title = groupHeaderTitle;
                  }
             }
 
