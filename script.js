@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 Each card represents a unit of content that can be independently created, expanded, or rearranged.
 Your role is to help users brainstorm, structure, enrich, refine, and review their writing by generating content that fits within this card-based framework.
 Always output in plain text (no markdow format) and output the card content directly without unnecessary explanations or introductions.
-When creating separate cards, clearly separate each card using "---" as a delimiter.
+When creating multiple cards, clearly separate the cards using "---" as a delimiter.
 Stick to the card-based structure and maintain clarity, coherence, and consistency in your responses.`
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
@@ -2025,7 +2025,8 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
             userPrompt += `## Author Provided Context\n\n${columnPrompt}`
         }
         userPrompt += `\n\n## Existing Cards\n\n${contextText}`
-        userPrompt += `\n\n## Instruction\n\nGiven the above context and existing cards, create the next card that logically continues and expands on the sequence. Ensure continuity, coherence, and clarity in content and structure.`
+        userPrompt += `\n\n## Instruction\n\nGiven the above context and existing cards, create the next card that logically continues and expands on the sequence.
+Ensure continuity, coherence, and clarity in content and structure.`
         messages.push({ role: "user", content: userPrompt });
 
         // Create placeholder card *after* the current card
@@ -2083,7 +2084,9 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
         messages.push({
             role: "user",
-            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nExpand the current card by brainstorming multiple child cards. Each child card should build on the ideas in the current card, remain consistent with the overall context, and offer new insights or directions. Please clearly separate each child card using "---" as a delimiter.`
+            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nExpand the current card by brainstorming multiple child cards.
+Each child card should build on the ideas in the current card, remain consistent with the overall context, and offer new insights or directions.
+Please clearly separate each card using "---" as a delimiter.`
         });
 
         // Create a single temporary placeholder in the next column
@@ -2202,7 +2205,8 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
         messages.push({
             role: "user",
-            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version. Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`
+            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version.
+Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`
         });
 
         const placeholderContent = "AI is thinking...";
