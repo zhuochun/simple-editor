@@ -14,10 +14,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const MIN_COLUMNS = 3;
     const BASE_COLOR_HUE = 200; // Starting Hue for first root card
     const HUE_ROTATION_STEP = 30; // Degrees to shift hue for each subsequent root card
-    const BASE_COLOR_SATURATION = 50;
-    const BASE_COLOR_LIGHTNESS = 92;
-    const LIGHTNESS_STEP_DOWN = 3;
-    const SATURATION_STEP_UP = 3;
+    const BASE_COLOR_SATURATION = 60;
+    const BASE_COLOR_LIGHTNESS = 90;
+    const LIGHTNESS_STEP_DOWN = 5;
+    const SATURATION_STEP_UP = 5;
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
 
@@ -584,6 +584,29 @@ document.addEventListener('DOMContentLoaded', () => {
         groupEl.addEventListener('dragenter', handleDragEnter);
         groupEl.addEventListener('dragleave', handleDragLeave);
         groupEl.addEventListener('drop', handleDrop);
+
+        // Add double-click listener to create a child card
+        groupEl.addEventListener('dblclick', (e) => {
+            // Only trigger if the click is not on a card within the group
+            if (e.target.closest('.card')) {
+                return; // Click was on a card, do nothing
+            }
+            e.stopPropagation(); // Prevent triggering column dblclick if nested
+
+            const parentId = groupEl.dataset.parentId;
+            const columnEl = groupEl.closest('.column');
+            if (parentId && columnEl) {
+                const columnIndex = parseInt(columnEl.dataset.columnIndex, 10);
+                if (!isNaN(columnIndex)) {
+                    console.log(`Double-click on group ${parentId}, adding card to column ${columnIndex}`);
+                    addCard(columnIndex, parentId); // Add child card to this group's column
+                } else {
+                    console.error("Could not determine column index for group double-click.");
+                }
+            } else {
+                console.error("Could not find parentId or column element for group double-click.");
+            }
+        });
 
         return groupEl;
     }
@@ -1166,10 +1189,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const allIdsToDelete = [cardId, ...descendantIds];
         const numDescendants = descendantIds.length;
         const wasRoot = !card.parentId && card.columnIndex === 0;
+        const hasContent = card.content?.trim() !== ''; // Check if content exists (trimmed)
 
-        if (!confirm(`Delete card #${cardId.slice(-4)} and its ${numDescendants} descendant(s) from project "${projects[activeProjectId].title}"?`)) {
-            return;
+        // Skip confirmation if card is empty AND has no descendants
+        const shouldConfirm = hasContent || numDescendants > 0;
+
+        if (shouldConfirm) {
+            if (!confirm(`Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${numDescendants} descendant(s) from project "${projects[activeProjectId].title}"?`)) {
+                return;
+            }
         }
+        // Proceed with deletion if confirmed OR if skipping confirmation
 
         const affectedColumns = new Set();
         affectedColumns.add(card.columnIndex);

@@ -18,6 +18,7 @@ The tool contains an interface with multiple columns of nested, editable cards.
 - The heading displays the card ID (last 4 chars) on the left
   - ID can be generated with by timestmap + random string
 - The heading contains symbol buttons to delete this card, or add a child card on the right
+  - Skip delete confirmation if card is empty AND has no descendants
 - The heading area is also the handle for dragging
 - Editable text area allowing users to type notes, text and format are saved when the text area lost user focus.
 
@@ -26,6 +27,7 @@ The tool contains an interface with multiple columns of nested, editable cards.
 - Every card has a child card group in the next column, as a visual placeholder.
 - Each child group displays the parent's card ID on the top left, for quick references.
 - Added child cards are placed in the corresponding card groups.
+- Double clicking in a card group creates a child card in it.
 
 # Nested Organization
 

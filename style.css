@@ -120,6 +120,9 @@ body {
 .project-title {
     flex-grow: 1;
     margin-right: 8px;
+    white-space: nowrap; /* Prevent text wrapping */
+    overflow: hidden; /* Hide overflow */
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
 }
 
 .project-title-input {
@@ -258,7 +261,7 @@ body {
 }
 
 .card-content {
-    width: calc(100% - 20px); /* Adjusted for padding */
+    width: 100%;
     min-height: 50px;
     padding: 10px;
     border: none;
@@ -276,22 +279,17 @@ body {
 .card-group {
     border: 1px dashed #aaa;
     border-radius: 4px;
+    padding-bottom: 10px;
     margin-bottom: 10px;
-    padding-top: 25px; /* Space for header */
     position: relative; /* For header positioning */
     min-height: 40px; /* Ensure drop zone exists */
     background-color: rgba(0, 0, 0, 0.02); /* Slight indication */
 }
 
 .group-header {
-    position: absolute;
-    top: 2px;
-    left: 5px;
     font-size: 0.75em;
     color: #777;
-    background-color: #e0e0e0; /* Match column bg */
-    padding: 1px 4px;
-    border-radius: 3px;
+    padding: 10px 8px;
     font-family: monospace;
     user-select: none;
 }
