@@ -28,6 +28,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const LIGHTNESS_STEP_DOWN = 5;
     const SATURATION_STEP_UP = 5;
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
+    const AI_SYSTEM_PROMPT = `You are an AI writing assistant embedded in a column-based, hierarchical writing app where content is organized in discrete cards.
+Each card represents a unit of content that can be independently created, expanded, or rearranged.
+Your role is to help users brainstorm, structure, enrich, refine, and review their writing by generating content that fits within this card-based framework.
+Always output in plain text and output the card content directly without unnecessary explanations or introductions.
+When creating separate cards, clearly separate each card using "---" as a delimiter.
+Stick to the card-based structure and maintain clarity, coherence, and consistency in your responses.`
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
     const AI_SETTINGS_STORAGE_KEY = 'writingToolAiSettings'; // Use the one defined in aiService
@@ -2013,11 +2019,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const { contextText, columnPrompt } = getCardContextForContinue(cardId);
 
-        const messages = [];
+        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
+        let userPrompt = '';
         if (columnPrompt) {
-            messages.push({ role: "system", content: columnPrompt });
+            userPrompt += `## Author Provided Context\n\n${columnPrompt}`
         }
-        messages.push({ role: "user", content: `Continue writing based on the following text:\n\n${contextText}` });
+        userPrompt += `\n\n## Existing Cards\n\n${contextText}`
+        userPrompt += `\n\n## Instruction\n\nGiven the above context and existing cards, create the next card that logically continues and expands on the sequence. Ensure continuity, coherence, and clarity in content and structure.`
+        messages.push({ role: "user", content: userPrompt });
 
         // Create placeholder card *after* the current card
         const placeholderContent = "AI is thinking...";
@@ -2071,10 +2080,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCards = card.id; // New cards are children of the original
 
-        const messages = [{
+        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
+        messages.push({
             role: "user",
-            content: `Break down the following text into distinct parts or ideas. Separate each part clearly using "---" as a delimiter. Output only the parts separated by "---", without any introduction or conclusion.\n\nText:\n${card.content}`
-        }];
+            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nExpand the current card by brainstorming multiple child cards. Each child card should build on the ideas in the current card, remain consistent with the overall context, and offer new insights or directions. Please clearly separate each child card using "---" as a delimiter.`
+        });
 
         // Create a single temporary placeholder in the next column
         const placeholderContent = "AI is thinking...";
@@ -2189,10 +2199,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCard = card.id; // New card is child of the original
 
-        const messages = [{
+        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
+        messages.push({
             role: "user",
-            content: `Expand on the following idea or text. Provide more detail, explanation, or related concepts:\n\n${card.content}`
-        }];
+            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version. Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`
+        });
 
         const placeholderContent = "AI is thinking...";
         // Add as a child in the next column
@@ -2283,10 +2294,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetColumnIndex = card.columnIndex + 1;
             const parentIdForNewCard = card.id;
 
-            const messages = [{
+            const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
+            messages.push({
                 role: "user",
-                content: `${userPrompt}\n\nText:\n${card.content || '(Card is empty)'}`
-            }];
+                content: `## Current Card\n\n${card.content}\n\n## Instruction\n\n${userPrompt}`
+            });
 
             const placeholderContent = "AI is thinking...";
             const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
