@@ -663,10 +663,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="card-header" draggable="true">
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-ai-actions ai-feature">
-                     <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>➡️</button>
-                     <button class="ai-breakdown-btn" title="Breakdown (to next column)" ${!aiReady ? 'disabled' : ''}>🧱</button>
-                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
-                     <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>🤖</button>
+                     <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>⬇️</button>
+                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
+                     <button class="ai-breakdown-btn" title="Breakdown (to next column)" ${!aiReady ? 'disabled' : ''}>📶</button>
+                     <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
                 </div>
                 <div class="card-actions">
                     <button class="add-child-btn" title="Add Child Card (to next column)">➕</button>
