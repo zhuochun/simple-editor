@@ -1,9 +1,31 @@
-# Hierarchical Editor
+# Simple Editor
 
 A non-linear, hierarchical approach to drafting and organizing complex documents.
 
-All content are stored in your browser, and you can export them to plain text file easily.
+![Screenshot](https://github.com/zhuochun/simple-editor/blob/e48a4dce0abcd28882f9a0bbcef9adde44c9fe5b/docs/screenshot-2025-03-31.png?raw=true)
 
----
+All data are stored in your browser. You can export a project in plain text file for backup easily.
 
-Built with Vibe, together with Gemini 2.5 Pro.
+## AI Setup
+
+You need to bring your own keys, and configure them in the sidebar.
+
+Use any OpenAI `completions` API compatible provider, e.g. [OpenAI](https://platform.openai.com/), [OpenRouter](https://openrouter.ai/), etc.
+
+Provider URL:
+
+- OpenAI: https://api.openai.com/v1/completions
+- OpenRouter: https://openrouter.ai/api/v1/chat/completions
+
+Model Name:
+
+- OpenAI: `GPT-4o-mini` (From [Models](https://platform.openai.com/docs/models))
+- OpenRouter: `deepseek/deepseek-chat-v3-0324:free` (From [Models](https://openrouter.ai/models))
+
+## Credits
+
+Built with vibe by [Zhuochun](https://github.com/zhuochun) together with Gemini 2.5 Pro 🪄.
+
+Buy me a coffee 🧋 on [GitHub Sponsor](https://github.com/sponsors/zhuochun)!
+
+Star 🌟 this repo and share this tool on [X](https://x.com/zhuochun) 👍.

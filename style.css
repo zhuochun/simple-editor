@@ -153,10 +153,31 @@ body {
     color: #000;
 }
 
+/* --- Info Links Section --- */
+#info-links-container {
+    margin-top: 20px;
+    padding: 5px;
+    text-align: center;
+    font-size: 0.9em;
+    border-top: 1px solid #ccc; /* Add separator like AI settings */
+    padding-top: 10px; /* Add some space above links */
+    margin-bottom: 10px; /* Add some space below links */
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+#info-links-container a {
+    color: #007bff;
+    text-decoration: none;
+    margin: 0 5px; /* Add horizontal spacing between links */
+}
+
+#info-links-container a:hover {
+    text-decoration: underline;
+}
+
 /* --- AI Settings --- */
 #ai-settings-container {
     padding: 10px 10px 15px 10px;
-    border-top: 1px solid #ccc;
     margin-top: auto; /* Push to bottom */
     background-color: #d0d7e0;
     flex-shrink: 0;
@@ -167,6 +188,22 @@ body {
     font-weight: bold;
     margin: 0 0 8px 0;
     color: #333;
+    display: flex; /* Use flex to align title and link */
+    justify-content: space-between; /* Puts link on the right */
+    align-items: center; /* Vertically center items */
+}
+
+/* Mini Helper Link inside AI Settings Title */
+#ai-settings-title a {
+    font-size: 0.7em;
+    font-weight: normal;
+    text-decoration: none;
+    color: #007bff; /* Match info links color */
+    margin-left: 5px; /* Space between title and link */
+}
+
+#ai-settings-title a:hover {
+    text-decoration: underline;
 }
 
 #ai-settings-title.ready::before {
