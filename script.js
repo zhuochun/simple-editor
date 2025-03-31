@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Existing variables...
     const sidebar = document.getElementById('sidebar');
     const resizer = document.getElementById('resizer');
     const mainContent = document.getElementById('main-content');
@@ -6,10 +7,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const addProjectBtn = document.getElementById('add-project-btn');
     const projectListContainer = document.getElementById('project-list');
 
-    let projects = {}; // { projectId: { id, title, lastModified, data: { columns: [], cards: {} } } }
+    // AI Settings Elements
+    const aiSettingsContainer = document.getElementById('ai-settings-container');
+    const aiSettingsTitle = document.getElementById('ai-settings-title');
+    const aiProviderUrlInput = document.getElementById('ai-provider-url');
+    const aiModelNameInput = document.getElementById('ai-model-name');
+    const aiApiKeyInput = document.getElementById('ai-api-key');
+
+    let projects = {}; // { projectId: { id, title, lastModified, data: { columns: [{id, prompt?}], cards: {} } } }
     let activeProjectId = null;
     let draggedCardId = null;
     let dragIndicator = null;
+    let aiSettings = { providerUrl: '', modelName: '', apiKey: '', isValid: false }; // Local cache
 
     const MIN_COLUMNS = 3;
     const BASE_COLOR_HUE = 200; // Starting Hue for first root card
@@ -21,6 +30,101 @@ document.addEventListener('DOMContentLoaded', () => {
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
+    const AI_SETTINGS_STORAGE_KEY = 'writingToolAiSettings'; // Use the one defined in aiService
+
+
+    // --- AI Settings Management ---
+
+    function loadAiSettings() {
+        const storedSettings = localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
+        if (storedSettings) {
+            try {
+                aiSettings = JSON.parse(storedSettings);
+                // Ensure structure compatibility
+                aiSettings.providerUrl = aiSettings.providerUrl || '';
+                aiSettings.modelName = aiSettings.modelName || '';
+                aiSettings.apiKey = aiSettings.apiKey || '';
+            } catch (e) {
+                console.error("Error parsing AI settings from localStorage:", e);
+                aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
+            }
+        } else {
+            aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
+        }
+        updateAiSettingsUI();
+        updateAiFeatureVisibility(); // Update based on loaded settings
+    }
+
+    function saveAiSettings() {
+        // Read directly from inputs to save current values
+        aiSettings = {
+            providerUrl: aiProviderUrlInput.dataset.value || '', // Use data-value
+            modelName: aiModelNameInput.dataset.value || '',
+            apiKey: aiApiKeyInput.dataset.value || ''
+        };
+        localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(aiSettings));
+        updateAiFeatureVisibility(); // Update based on saved settings
+        console.log("AI Settings Saved.");
+    }
+
+    function updateAiSettingsUI() {
+        // Store actual value in data attribute, display masked value
+        aiProviderUrlInput.dataset.value = aiSettings.providerUrl || '';
+        aiModelNameInput.dataset.value = aiSettings.modelName || '';
+        aiApiKeyInput.dataset.value = aiSettings.apiKey || '';
+
+        aiProviderUrlInput.value = aiSettings.providerUrl ? '******' : '';
+        aiModelNameInput.value = aiSettings.modelName ? '******' : '';
+        aiApiKeyInput.value = aiSettings.apiKey ? '******' : '';
+
+        // Update title checkmark
+        const isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
+        aiSettingsTitle.classList.toggle('ready', isValid);
+    }
+
+    function handleAiInputFocus(event) {
+        const input = event.target;
+        input.type = 'text'; // Show actual value
+        input.value = input.dataset.value || '';
+    }
+
+    function handleAiInputBlur(event) {
+        const input = event.target;
+        // Save the potentially changed value into data-value before masking
+        input.dataset.value = input.value;
+        if (input.value) {
+            input.type = 'password'; // Mask if not empty
+            input.value = '******';
+        } else {
+            input.type = 'text'; // Keep as text if empty
+            input.value = '';
+        }
+        saveAiSettings(); // Save on blur
+    }
+
+    function areAiSettingsValid() {
+        // Check the locally cached settings object after loading/saving
+        return !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
+    }
+
+    function updateAiFeatureVisibility() {
+        const isValid = areAiSettingsValid();
+        document.body.classList.toggle('ai-ready', isValid);
+        // You might also need to disable/enable buttons specifically if needed
+        document.querySelectorAll('.ai-feature button').forEach(btn => {
+            btn.disabled = !isValid;
+        });
+        // Update title checkmark
+        aiSettingsTitle.classList.toggle('ready', isValid);
+    }
+
+    // Add AI Setting Listeners
+    aiProviderUrlInput.addEventListener('focus', handleAiInputFocus);
+    aiProviderUrlInput.addEventListener('blur', handleAiInputBlur);
+    aiModelNameInput.addEventListener('focus', handleAiInputFocus);
+    aiModelNameInput.addEventListener('blur', handleAiInputBlur);
+    aiApiKeyInput.addEventListener('focus', handleAiInputFocus);
+    aiApiKeyInput.addEventListener('blur', handleAiInputBlur);
 
     // --- Project Management ---
 
@@ -32,7 +136,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const projectId = generateId('proj_');
         const defaultColumns = [];
         for (let i = 0; i < MIN_COLUMNS; i++) {
-            defaultColumns.push({ id: `col-${generateId()}` });
+            // Add prompt property to column data
+            defaultColumns.push({ id: `col-${generateId()}`, prompt: '' });
         }
         return {
             id: projectId,
@@ -128,6 +233,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Saves the entire projects object to localStorage
     function saveProjectsData() {
         try {
+            // Ensure column prompts are saved
+            if (activeProjectId && projects[activeProjectId] && projects[activeProjectId].data.columns) {
+                 projects[activeProjectId].data.columns.forEach(col => {
+                     if (col.prompt === undefined) col.prompt = ''; // Ensure prompt property exists
+                 });
+            }
             localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
         } catch (e) {
             console.error("Error saving projects data to localStorage:", e);
@@ -202,6 +313,10 @@ document.addEventListener('DOMContentLoaded', () => {
                   const defaultData = createDefaultProject().data;
                   proj.data = defaultData;
              }
+             // Ensure columns have prompt property
+             proj.data.columns.forEach(col => {
+                if (col.prompt === undefined) col.prompt = '';
+             });
              // Recalculate colors on load
              Object.values(proj.data.cards).forEach(card => delete card.color);
              Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card, proj.data)); // Pass project data
@@ -376,6 +491,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return projectData.cards[id];
     }
 
+     // Helper to get column data (including prompt)
+     function getColumnData(columnIndex) {
+         const projectData = getActiveProjectData();
+         if (columnIndex >= 0 && columnIndex < projectData.columns.length) {
+             return projectData.columns[columnIndex];
+         }
+         return null; // Or return a default object { id: null, prompt: '' }
+     }
+
+
     // Helper to get column index (no change needed)
     function getColumnIndex(columnElement) {
         if (!columnElement) return -1;
@@ -516,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return columnsContainer.children[index];
     }
 
-    // REVISED: Create Card Element - Uses active project context for color
+    // REVISED: Create Card Element - Uses active project context for color, adds AI buttons
     function createCardElement(card) {
         const cardEl = document.createElement('div');
         cardEl.id = `card-${card.id}`;
@@ -531,12 +656,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
         const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
 
+        // Check AI readiness for button state
+        const aiReady = areAiSettingsValid();
+
         cardEl.innerHTML = `
             <div class="card-header" draggable="true">
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
+                <div class="card-ai-actions ai-feature">
+                     <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>➡️</button>
+                     <button class="ai-breakdown-btn" title="Breakdown (to next column)" ${!aiReady ? 'disabled' : ''}>🧱</button>
+                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
+                     <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>🤖</button>
+                </div>
                 <div class="card-actions">
-                    <button class="add-child-btn" title="Add Child Card">+</button>
-                    <button class="delete-card-btn" title="Delete Card">×</button>
+                    <button class="add-child-btn" title="Add Child Card (to next column)">➕</button>
+                    <button class="delete-card-btn" title="Delete Card">🗑️</button>
                 </div>
             </div>
             <textarea class="card-content" placeholder="Enter text...">${card.content || ''}</textarea>
@@ -563,6 +697,7 @@ document.addEventListener('DOMContentLoaded', () => {
         textarea.addEventListener('input', autoResizeTextarea);
         requestAnimationFrame(() => autoResizeTextarea({ target: textarea }));
 
+        // Standard Actions
         headerEl.querySelector('.add-child-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             addCard(card.columnIndex + 1, card.id);
@@ -571,6 +706,15 @@ document.addEventListener('DOMContentLoaded', () => {
             e.stopPropagation();
              deleteCard(card.id);
         });
+
+        // AI Actions (only add listeners if AI is potentially ready)
+        if (aiReady) { // Could also check here, but CSS handles visibility
+            headerEl.querySelector('.ai-continue-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiContinue(card.id); });
+            headerEl.querySelector('.ai-breakdown-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiBreakdown(card.id); });
+            headerEl.querySelector('.ai-expand-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiExpand(card.id); });
+            headerEl.querySelector('.ai-custom-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiCustom(card.id); });
+        }
+
 
         return cardEl;
     }
@@ -640,16 +784,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return groupEl;
     }
 
-    // REVISED: Create Column Element - Uses active project context for handlers
+    // REVISED: Create Column Element - Adds "Add Prompt" button
     function createColumnElement(columnIndex) {
         const columnEl = document.createElement('div');
         columnEl.className = 'column';
         columnEl.dataset.columnIndex = columnIndex;
+        const aiReady = areAiSettingsValid();
+        const columnData = getColumnData(columnIndex);
+        const promptIndicator = columnData?.prompt ? '📝' : ''; // Indicator if prompt exists
 
         columnEl.innerHTML = `
             <div class="column-toolbar">
                  <div class="toolbar-left">
                      <button class="add-card-btn">Add Card</button>
+                     <button class="add-prompt-btn ai-feature" title="Set Column Prompt" ${!aiReady ? 'disabled' : ''}>Prompt ${promptIndicator}</button>
                  </div>
                  <div class="toolbar-right">
                      <button class="add-column-btn">Add Column</button>
@@ -664,6 +812,13 @@ document.addEventListener('DOMContentLoaded', () => {
         columnEl.querySelector('.add-card-btn').addEventListener('click', () => addCard(columnIndex, null)); // addCard uses active project
         columnEl.querySelector('.add-column-btn').addEventListener('click', addColumn); // addColumn uses active project
         columnEl.querySelector('.delete-column-btn').addEventListener('click', () => deleteColumn(columnIndex)); // deleteColumn uses active project
+
+        // Add Prompt Button Listener
+        const addPromptBtn = columnEl.querySelector('.add-prompt-btn');
+        if (addPromptBtn) {
+             addPromptBtn.addEventListener('click', () => handleSetColumnPrompt(columnIndex));
+        }
+
 
         cardsContainer.addEventListener('dblclick', (e) => {
              if (e.target === cardsContainer && columnIndex === 0) {
@@ -751,14 +906,17 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`App rendered for project: ${projects[activeProjectId]?.title}`);
     }
 
-    // REVISED: Update Toolbar Buttons - Uses active project data
+    // REVISED: Update Toolbar Buttons - Uses active project data, updates prompt button
     function updateToolbarButtons(columnEl, columnIndex) {
          const addCardBtn = columnEl.querySelector('.add-card-btn');
          const addColBtn = columnEl.querySelector('.add-column-btn');
          const delColBtn = columnEl.querySelector('.delete-column-btn');
+         const addPromptBtn = columnEl.querySelector('.add-prompt-btn'); // Get prompt button
+
          const numColumns = columnsContainer.children.length; // Based on current DOM
          const isRightmost = columnIndex === numColumns - 1;
          const projectData = getActiveProjectData();
+         const columnData = getColumnData(columnIndex); // Get column data
 
          addCardBtn.classList.toggle('hidden', columnIndex !== 0);
          addColBtn.classList.toggle('hidden', !isRightmost);
@@ -768,6 +926,13 @@ document.addEventListener('DOMContentLoaded', () => {
          const canDelete = isRightmost && projectData.columns.length > MIN_COLUMNS && columnCards.length === 0;
          delColBtn.classList.toggle('hidden', !canDelete);
          delColBtn.disabled = !canDelete;
+
+         // Update prompt button text/indicator
+         if (addPromptBtn) {
+             const promptIndicator = columnData?.prompt ? '📝' : '';
+             addPromptBtn.textContent = `Prompt ${promptIndicator}`;
+             addPromptBtn.disabled = !areAiSettingsValid(); // Also disable if AI not ready
+         }
     }
 
     // No change needed for autoResizeTextarea
@@ -791,6 +956,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const card = getCard(cardId); // Uses active project data
 
         if (card && card.content !== textarea.value) {
+            // If it was loading, clear the loading state
+            textarea.classList.remove('ai-loading');
             card.content = textarea.value;
             updateProjectLastModified(); // Mark project as modified
             saveProjectsData(); // Save all project data (includes the modification)
@@ -1137,34 +1304,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Logic Functions (Adapted for Active Project) ---
 
-    // REVISED: addCard - Operates on active project, updates lastModified, saves all
-    function addCard(columnIndex, parentId = null) {
+    // REVISED: addCard - Operates on active project, updates lastModified, saves all. Added initialContent option.
+    function addCard(columnIndex, parentId = null, initialContent = '', insertBeforeCardId = null) {
         const projectData = getActiveProjectData();
-        if (!projectData) return; // Safety check
+        if (!projectData) return null; // Safety check
 
         if (parentId && !projectData.cards[parentId]) {
             console.error(`Cannot add card: Parent ${parentId} not found in active project.`);
-            return;
+            return null;
         }
         const maxExistingColumn = projectData.columns.length - 1;
         if (columnIndex < 0 || columnIndex > maxExistingColumn + 1) {
              console.error(`Cannot add card: Invalid column index ${columnIndex}. Max is ${maxExistingColumn + 1}`);
-             return;
+             return null;
         }
 
         const newCardId = generateId('card_');
         const newCard = {
-            id: newCardId, name: null, content: '', parentId: parentId,
+            id: newCardId, name: null, content: initialContent, parentId: parentId,
             columnIndex: columnIndex, order: 0, color: ''
         };
 
         projectData.cards[newCardId] = newCard; // Add to active project data
 
-        // Determine order (append) using project-aware helpers
+        // Determine order using project-aware helpers and insertBeforeCardId
         let siblings;
         if (parentId) siblings = getChildCards(parentId, columnIndex).filter(c => c.id !== newCardId);
         else siblings = getColumnCards(columnIndex).filter(c => c.id !== newCardId);
-        newCard.order = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
+
+        let newOrder;
+        if (insertBeforeCardId && insertBeforeCardId !== newCardId) {
+            const insertBeforeCard = projectData.cards[insertBeforeCardId];
+            if (insertBeforeCard && insertBeforeCard.columnIndex === columnIndex && insertBeforeCard.parentId === parentId) {
+                const insertBeforeOrder = insertBeforeCard.order;
+                const insertBeforeIndexInSiblings = siblings.findIndex(c => c.id === insertBeforeCardId);
+                let prevOrder = -1;
+                if (insertBeforeIndexInSiblings > 0) {
+                    prevOrder = siblings[insertBeforeIndexInSiblings - 1].order;
+                } else if (insertBeforeIndexInSiblings === 0) {
+                    prevOrder = -1; // Insert at the beginning
+                }
+                newOrder = (prevOrder + insertBeforeOrder) / 2.0;
+            } else {
+                console.warn(`Invalid insertBeforeCardId ${insertBeforeCardId} or not a valid sibling for new card. Appending.`);
+                newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
+            }
+        } else { // Append
+            newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
+        }
+        newCard.order = newOrder;
+
 
         // Calculate Color (uses active project context)
         newCard.color = getColorForCard(newCard);
@@ -1184,11 +1373,83 @@ document.addEventListener('DOMContentLoaded', () => {
              addColumnInternal(false); // Add to active project, don't save yet
         }
 
-        // Re-render affected columns in the DOM
-        const targetColumnEl = getColumnElementByIndex(columnIndex);
-        if (targetColumnEl) renderColumnContent(targetColumnEl, columnIndex);
+        // --- DOM Update ---
+        // Instead of full re-render, insert the new element directly for better focus/scroll
+        const newCardEl = createCardElement(newCard); // Create the element
+        let targetContainer;
+        let insertBeforeEl = null;
 
-        // Re-render next column if it exists and might be affected (e.g., group headers)
+        if (parentId) {
+            targetContainer = getGroupElement(parentId);
+            if (!targetContainer) { // Group might not exist yet if this is the first child
+                const parentCard = getCard(parentId);
+                if(parentCard) {
+                    const parentColEl = getColumnElementByIndex(parentCard.columnIndex);
+                    renderColumnContent(parentColEl, parentCard.columnIndex); // Re-render parent column
+                    const targetColEl = getColumnElementByIndex(columnIndex);
+                    renderColumnContent(targetColEl, columnIndex); // Re-render target column
+                    targetContainer = getGroupElement(parentId); // Try getting group again
+                }
+            }
+        } else {
+            const columnEl = getColumnElementByIndex(columnIndex);
+            if (columnEl) targetContainer = columnEl.querySelector('.cards-container');
+        }
+
+        if(targetContainer) {
+            if (insertBeforeCardId) {
+                 insertBeforeEl = getCardElement(insertBeforeCardId);
+                 // If inserting before a card in a group, make sure targetContainer is the group
+                 if(insertBeforeEl && parentId && !targetContainer.contains(insertBeforeEl)) {
+                      targetContainer = insertBeforeEl.closest('.card-group');
+                 }
+            }
+
+            if (insertBeforeEl && targetContainer && targetContainer.contains(insertBeforeEl)) {
+                 targetContainer.insertBefore(newCardEl, insertBeforeEl);
+            } else if (targetContainer) {
+                 // Append to the correct container (group or column's cards-container)
+                 if (parentId && targetContainer.classList.contains('card-group')) {
+                     // Find correct place within group (respect order)
+                     const siblingsInDOM = Array.from(targetContainer.querySelectorAll(`:scope > .card[data-card-id]`));
+                     let inserted = false;
+                     for(const siblingEl of siblingsInDOM) {
+                         const siblingCard = getCard(siblingEl.dataset.cardId);
+                         if(siblingCard && newCard.order < siblingCard.order) {
+                             targetContainer.insertBefore(newCardEl, siblingEl);
+                             inserted = true;
+                             break;
+                         }
+                     }
+                     if(!inserted) targetContainer.appendChild(newCardEl); // Append if last
+                 } else if (!parentId && targetContainer.classList.contains('cards-container')) {
+                      // Append root card to column's container (respect order)
+                      const siblingsInDOM = Array.from(targetContainer.querySelectorAll(`:scope > .card[data-card-id]`)); // Only direct children cards
+                      let inserted = false;
+                      for (const siblingEl of siblingsInDOM) {
+                           const siblingCard = getCard(siblingEl.dataset.cardId);
+                           if (siblingCard && newCard.order < siblingCard.order) {
+                               targetContainer.insertBefore(newCardEl, siblingEl);
+                               inserted = true;
+                               break;
+                           }
+                      }
+                       if (!inserted) targetContainer.appendChild(newCardEl); // Append if last
+                 } else {
+                      console.warn("Could not determine correct insertion point, appending to container:", targetContainer);
+                      targetContainer.appendChild(newCardEl);
+                 }
+            } else {
+                 console.error("Target container not found for new card. Re-rendering column.", columnIndex);
+                 const colEl = getColumnElementByIndex(columnIndex);
+                 if(colEl) renderColumnContent(colEl, columnIndex);
+            }
+        } else {
+             console.error("Target container or column element not found. Re-rendering app.");
+             renderApp(); // Fallback to full render
+        }
+
+        // Re-render next column if it exists and might be affected (e.g., group headers for the new card)
         if (projectData.columns.length > columnIndex + 1) {
              const nextColumnEl = getColumnElementByIndex(columnIndex + 1);
              if (nextColumnEl) renderColumnContent(nextColumnEl, columnIndex + 1);
@@ -1198,14 +1459,20 @@ document.addEventListener('DOMContentLoaded', () => {
         saveProjectsData(); // Save all project data
 
         requestAnimationFrame(() => {
-             const newCardEl = getCardElement(newCardId);
+            const textarea = newCardEl.querySelector('.card-content');
+             if (textarea && initialContent.includes("AI is thinking...")) {
+                 textarea.classList.add('ai-loading');
+             }
              if (newCardEl) {
-                 const textarea = newCardEl.querySelector('.card-content');
-                  if(textarea) textarea.focus();
-                  newCardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                 newCardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                 // Don't focus if AI is loading
+                 if(textarea && !initialContent.includes("AI is thinking...")) {
+                      textarea.focus();
+                 }
              }
         });
         console.log(`Card ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order} in project ${activeProjectId}`);
+        return newCardId; // Return the ID of the created card
     }
 
     // --- Card Name Editing ---
@@ -1226,9 +1493,16 @@ document.addEventListener('DOMContentLoaded', () => {
         input.placeholder = `#${cardId.slice(-4)}`; // Show ID as placeholder
 
         nameDisplaySpan.style.display = 'none'; // Hide the span
-        // Insert input before the actions div
+        // Insert input before the AI actions div (or standard actions if AI not present)
+        const aiActionsDiv = header.querySelector('.card-ai-actions');
         const actionsDiv = header.querySelector('.card-actions');
-        header.insertBefore(input, actionsDiv);
+        const insertBeforeTarget = aiActionsDiv || actionsDiv;
+        if (insertBeforeTarget) {
+             header.insertBefore(input, insertBeforeTarget);
+        } else { // Fallback if no action divs found
+             header.appendChild(input);
+        }
+
 
         input.focus();
         input.select();
@@ -1316,6 +1590,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const affectedColumns = new Set();
         affectedColumns.add(card.columnIndex);
+        const originalParentId = card.parentId;
 
         allIdsToDelete.forEach(id => {
             const c = projectData.cards[id];
@@ -1331,12 +1606,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
          let rootColorsNeedUpdate = wasRoot;
 
-         // Re-render affected columns first
+         // --- DOM Deletion ---
+         allIdsToDelete.forEach(id => {
+             const cardEl = getCardElement(id);
+             if (cardEl) cardEl.remove();
+             // Also remove group if it becomes empty (check needed after card removal)
+         });
+         // Remove empty group container if the deleted card was the last child
+         if (originalParentId) {
+            const children = getChildCards(originalParentId, card.columnIndex);
+            if (children.length === 0) {
+                const groupEl = getGroupElement(originalParentId);
+                if (groupEl) groupEl.remove();
+            }
+         }
+
+
+         // Re-render affected columns that *still exist* to update layout/groups etc.
          Array.from(affectedColumns).sort((a,b)=>a-b).forEach(colIndex => {
-             // Only render if column still exists (index might be beyond current max after deletion)
-             if(colIndex < projectData.columns.length) {
+             if(colIndex < projectData.columns.length) { // Check if column index is valid
                  const colEl = getColumnElementByIndex(colIndex);
-                 if (colEl) renderColumnContent(colEl, colIndex);
+                 if (colEl) {
+                      // If the column itself wasn't deleted, re-render its content
+                      renderColumnContent(colEl, colIndex);
+                 }
              }
          });
 
@@ -1360,13 +1653,41 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`Card ${cardId} and ${numDescendants} descendants deleted from project ${activeProjectId}.`);
     }
 
-    // REVISED: addColumnInternal - Operates on active project's columns array
+    // --- Column Prompt Handling ---
+    function handleSetColumnPrompt(columnIndex) {
+        const projectData = getActiveProjectData();
+        const columnData = getColumnData(columnIndex);
+        if (!columnData) {
+            console.error("Cannot set prompt for invalid column index:", columnIndex);
+            return;
+        }
+
+        const currentPrompt = columnData.prompt || '';
+        const newPrompt = prompt(`Set a prompt for Column ${columnIndex + 1}.\nThis will be used by AI 'Continue' actions in this column.\nLeave blank to clear.`, currentPrompt);
+
+        if (newPrompt !== null) { // Prompt wasn't cancelled
+            const trimmedPrompt = newPrompt.trim();
+            if (columnData.prompt !== trimmedPrompt) {
+                columnData.prompt = trimmedPrompt;
+                updateProjectLastModified();
+                saveProjectsData();
+                // Update the button indicator in the specific column
+                const columnEl = getColumnElementByIndex(columnIndex);
+                if (columnEl) updateToolbarButtons(columnEl, columnIndex);
+                console.log(`Column ${columnIndex} prompt updated.`);
+            }
+        }
+    }
+
+
+    // REVISED: addColumnInternal - Operates on active project's columns array, adds prompt property
     function addColumnInternal(doSave = true) {
         const projectData = getActiveProjectData();
         if (!projectData) return -1; // Safety check
 
         const newIndex = projectData.columns.length;
-        projectData.columns.push({ id: `col-${generateId()}` });
+        // Add prompt property when creating column data
+        projectData.columns.push({ id: `col-${generateId()}`, prompt: '' });
         console.log(`Internal add column to project ${activeProjectId}, new count: ${projectData.columns.length}`);
         if (doSave) {
              updateProjectLastModified();
@@ -1527,8 +1848,14 @@ document.addEventListener('DOMContentLoaded', () => {
         columnsToRender.add(originalColumnIndex);
         columnsToRender.add(targetColumnIndex);
         // Add columns where parents *were* or *are* to update groups
-        if (originalParentId) columnsToRender.add(projectData.cards[originalParentId]?.columnIndex + 1);
-        if (newParentId) columnsToRender.add(projectData.cards[newParentId]?.columnIndex + 1);
+        if (originalParentId) {
+            const originalParentCard = getCard(originalParentId);
+            if (originalParentCard) columnsToRender.add(originalParentCard.columnIndex + 1);
+        }
+         if (newParentId) {
+             const newParentCard = getCard(newParentId);
+             if (newParentCard) columnsToRender.add(newParentCard.columnIndex + 1);
+         }
         // Add columns where descendants ended up
         affectedDescendants.forEach(desc => columnsToRender.add(desc.columnIndex));
         // Add columns *next to* original/target columns to potentially update groups they contain
@@ -1600,11 +1927,334 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // --- AI Action Handlers ---
+
+    function getCardContextForContinue(cardId) {
+        const projectData = getActiveProjectData();
+        const currentCard = projectData.cards[cardId];
+        if (!currentCard) return { contextText: '', columnPrompt: '' };
+
+        const columnIndex = currentCard.columnIndex;
+        const columnData = getColumnData(columnIndex);
+        const columnPrompt = columnData?.prompt || '';
+
+        // Get siblings in the same column, same parent, ordered before current card
+        let siblings;
+        if (currentCard.parentId) {
+            siblings = getChildCards(currentCard.parentId, columnIndex);
+        } else {
+            siblings = getColumnCards(columnIndex);
+        }
+
+        const cardsAbove = siblings.filter(c => c.order < currentCard.order);
+        let contextText = cardsAbove.map(c => c.content || '').join('\n\n').trim();
+        if (contextText) contextText += '\n\n'; // Add separator if there was content above
+        contextText += currentCard.content || '';
+
+        return { contextText: contextText.trim(), columnPrompt };
+    }
+
+    function handleAiContinue(cardId) {
+        if (!areAiSettingsValid()) {
+            alert("Please configure AI settings first.");
+            return;
+        }
+        const card = getCard(cardId);
+        if (!card) return;
+
+        const { contextText, columnPrompt } = getCardContextForContinue(cardId);
+
+        const messages = [];
+        if (columnPrompt) {
+            messages.push({ role: "system", content: columnPrompt });
+        }
+        messages.push({ role: "user", content: `Continue writing based on the following text:\n\n${contextText}` });
+
+        // Create placeholder card *after* the current card
+        const placeholderContent = "AI is thinking...";
+        const newCardId = addCard(card.columnIndex, card.parentId, placeholderContent, card.nextSibling?.id); // Insert after current card
+        if (!newCardId) return; // Failed to create card
+
+        const newCardEl = getCardElement(newCardId);
+        const newTextarea = newCardEl?.querySelector('.card-content');
+        if (!newTextarea) {
+             console.error("Could not find textarea for new AI card:", newCardId);
+             getCard(newCardId).content = "Error: Could not find card textarea."; // Update data
+             saveProjectsData();
+             return;
+        }
+
+        let fullResponse = '';
+        aiService.streamChatCompletion({
+            messages: messages,
+            onChunk: (delta) => {
+                if (newTextarea.value === placeholderContent) {
+                    newTextarea.value = ''; // Clear placeholder on first chunk
+                    newTextarea.classList.remove('ai-loading');
+                }
+                newTextarea.value += delta;
+                autoResizeTextarea({ target: newTextarea }); // Resize as content streams
+            },
+            onError: (error) => {
+                newTextarea.value = `AI Error: ${error.message}`;
+                newTextarea.classList.remove('ai-loading');
+                const targetCard = getCard(newCardId);
+                if (targetCard) targetCard.content = newTextarea.value; // Save error to data
+                updateProjectLastModified();
+                saveProjectsData();
+            },
+            onDone: (finalContent) => {
+                 newTextarea.classList.remove('ai-loading');
+                 const targetCard = getCard(newCardId);
+                 if (targetCard) targetCard.content = finalContent; // Save final content to data
+                 updateProjectLastModified();
+                 saveProjectsData();
+                 console.log("AI Continue completed for card:", newCardId);
+            }
+        });
+    }
+
+    function handleAiBreakdown(cardId) {
+        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        const card = getCard(cardId);
+        if (!card || !card.content?.trim()) { alert("Card has no content to breakdown."); return; }
+
+        const targetColumnIndex = card.columnIndex + 1;
+        const parentIdForNewCards = card.id; // New cards are children of the original
+
+        const messages = [{
+            role: "user",
+            content: `Break down the following text into distinct parts or ideas. Separate each part clearly using "---" as a delimiter. Output only the parts separated by "---", without any introduction or conclusion.\n\nText:\n${card.content}`
+        }];
+
+        // Create a single temporary placeholder in the next column
+        const placeholderContent = "AI is thinking...";
+        const tempCardId = addCard(targetColumnIndex, parentIdForNewCards, placeholderContent);
+        if (!tempCardId) return;
+
+        const tempCardEl = getCardElement(tempCardId);
+        const tempTextarea = tempCardEl?.querySelector('.card-content');
+        if (!tempTextarea) {
+             console.error("Could not find textarea for temp AI card:", tempCardId);
+             getCard(tempCardId).content = "Error: Could not find card textarea.";
+             saveProjectsData();
+             return;
+        }
+
+        aiService.streamChatCompletion({
+            messages: messages,
+            onChunk: (delta) => {
+                 // Update the temporary card visually while streaming
+                 if (tempTextarea.value === placeholderContent) {
+                     tempTextarea.value = '';
+                     tempTextarea.classList.remove('ai-loading');
+                 }
+                 tempTextarea.value += delta;
+                 autoResizeTextarea({ target: tempTextarea });
+            },
+            onError: (error) => {
+                tempTextarea.value = `AI Error: ${error.message}`;
+                tempTextarea.classList.remove('ai-loading');
+                const targetCard = getCard(tempCardId);
+                if (targetCard) targetCard.content = tempTextarea.value; // Save error
+                updateProjectLastModified();
+                saveProjectsData();
+            },
+            onDone: (fullResponse) => {
+                // Process the full response here
+                const parts = fullResponse.split('---').map(p => p.trim()).filter(p => p.length > 0);
+
+                // Delete the temporary card first
+                deleteCard(tempCardId); // This handles DOM removal and data update
+
+                // Create new cards for each part
+                let lastCreatedCardId = null;
+                parts.forEach((partContent) => {
+                    // Add card sequentially in the target column as children of original card
+                    const newChildId = addCard(targetColumnIndex, parentIdForNewCards, partContent, null); // Append within group
+                    if(newChildId) lastCreatedCardId = newChildId;
+                });
+
+                // Ensure save after all cards are potentially added
+                updateProjectLastModified();
+                saveProjectsData();
+                console.log(`AI Breakdown completed for card ${cardId}, created ${parts.length} children.`);
+
+                // Optional: scroll to the last created card
+                if(lastCreatedCardId) {
+                    requestAnimationFrame(() => {
+                        const lastEl = getCardElement(lastCreatedCardId);
+                        if(lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    });
+                }
+            }
+        });
+    }
+
+    function handleAiExpand(cardId) {
+        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        const card = getCard(cardId);
+        if (!card || !card.content?.trim()) { alert("Card has no content to expand."); return; }
+
+        const targetColumnIndex = card.columnIndex + 1;
+        const parentIdForNewCard = card.id; // New card is child of the original
+
+        const messages = [{
+            role: "user",
+            content: `Expand on the following idea or text. Provide more detail, explanation, or related concepts:\n\n${card.content}`
+        }];
+
+        const placeholderContent = "AI is thinking...";
+        // Add as a child in the next column
+        const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
+        if (!newCardId) return;
+
+        const newCardEl = getCardElement(newCardId);
+        const newTextarea = newCardEl?.querySelector('.card-content');
+        if (!newTextarea) {
+             console.error("Could not find textarea for new AI card:", newCardId);
+              getCard(newCardId).content = "Error: Could not find card textarea."; // Update data
+              saveProjectsData();
+             return;
+        }
+
+        aiService.streamChatCompletion({
+            messages: messages,
+            onChunk: (delta) => {
+                if (newTextarea.value === placeholderContent) {
+                    newTextarea.value = '';
+                    newTextarea.classList.remove('ai-loading');
+                }
+                newTextarea.value += delta;
+                autoResizeTextarea({ target: newTextarea });
+            },
+            onError: (error) => {
+                newTextarea.value = `AI Error: ${error.message}`;
+                newTextarea.classList.remove('ai-loading');
+                const targetCard = getCard(newCardId);
+                if (targetCard) targetCard.content = newTextarea.value; // Save error
+                updateProjectLastModified();
+                saveProjectsData();
+            },
+            onDone: (finalContent) => {
+                 newTextarea.classList.remove('ai-loading');
+                 const targetCard = getCard(newCardId);
+                 if (targetCard) targetCard.content = finalContent; // Save final content
+                 updateProjectLastModified();
+                 saveProjectsData();
+                 console.log("AI Expand completed for card:", newCardId);
+            }
+        });
+    }
+
+    function handleAiCustom(cardId) {
+        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        const card = getCard(cardId);
+        if (!card) return;
+
+        // --- Simple Modal Implementation ---
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal-content';
+        modal.innerHTML = `
+            <h4>Custom AI Prompt</h4>
+            <p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
+            <textarea id="custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>
+            <div class="modal-actions">
+                <button id="custom-prompt-cancel">Cancel</button>
+                <button id="custom-prompt-submit" class="primary">Submit</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const promptInput = modal.querySelector('#custom-prompt-input');
+        const cancelButton = modal.querySelector('#custom-prompt-cancel');
+        const submitButton = modal.querySelector('#custom-prompt-submit');
+        promptInput.focus();
+
+        const closeModal = () => {
+            document.body.removeChild(overlay);
+        };
+
+        cancelButton.addEventListener('click', closeModal);
+        submitButton.addEventListener('click', () => {
+            const userPrompt = promptInput.value.trim();
+            if (!userPrompt) {
+                alert("Please enter a prompt.");
+                return;
+            }
+            closeModal(); // Close modal before processing
+
+            // Proceed with AI call
+            const targetColumnIndex = card.columnIndex + 1;
+            const parentIdForNewCard = card.id;
+
+            const messages = [{
+                role: "user",
+                content: `${userPrompt}\n\nText:\n${card.content || '(Card is empty)'}`
+            }];
+
+            const placeholderContent = "AI is thinking...";
+            const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
+            if (!newCardId) return;
+
+            const newCardEl = getCardElement(newCardId);
+            const newTextarea = newCardEl?.querySelector('.card-content');
+             if (!newTextarea) {
+                 console.error("Could not find textarea for new AI card:", newCardId);
+                 getCard(newCardId).content = "Error: Could not find card textarea."; // Update data
+                 saveProjectsData();
+                 return;
+             }
+
+            aiService.streamChatCompletion({
+                messages: messages,
+                onChunk: (delta) => {
+                    if (newTextarea.value === placeholderContent) {
+                        newTextarea.value = '';
+                         newTextarea.classList.remove('ai-loading');
+                    }
+                    newTextarea.value += delta;
+                    autoResizeTextarea({ target: newTextarea });
+                },
+                onError: (error) => {
+                    newTextarea.value = `AI Error: ${error.message}`;
+                     newTextarea.classList.remove('ai-loading');
+                     const targetCard = getCard(newCardId);
+                     if (targetCard) targetCard.content = newTextarea.value; // Save error
+                     updateProjectLastModified();
+                     saveProjectsData();
+                },
+                onDone: (finalContent) => {
+                    newTextarea.classList.remove('ai-loading');
+                     const targetCard = getCard(newCardId);
+                     if (targetCard) targetCard.content = finalContent; // Save final content
+                     updateProjectLastModified();
+                     saveProjectsData();
+                     console.log("AI Custom completed for card:", newCardId);
+                }
+            });
+        });
+        // Allow submitting with Enter in textarea
+         promptInput.addEventListener('keydown', (e) => {
+             if (e.key === 'Enter' && !e.shiftKey) {
+                 e.preventDefault(); // Prevent newline
+                 submitButton.click(); // Trigger submit
+             }
+         });
+    }
+
 
     // --- Initial Load ---
+    loadAiSettings(); // Load AI settings first
     loadProjectsData(); // Loads all projects and determines/loads the active one
     renderProjectList(); // Render the sidebar
     renderApp(); // Render the main view for the active project
+    updateAiFeatureVisibility(); // Ensure features are shown/hidden based on initial settings
 
     // Add Project Button Listener
     addProjectBtn.addEventListener('click', addProject);

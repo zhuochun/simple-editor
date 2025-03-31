@@ -91,6 +91,7 @@ body {
     flex-grow: 1;
     overflow-y: auto;
     padding: 0 5px 10px 5px; /* Add padding */
+    min-height: 100px; /* Ensure space even if few projects */
 }
 
 .project-item {
@@ -144,14 +145,57 @@ body {
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 0.9em;
-    padding: 2px 3px;
+    font-size: 1.1em; /* Make icons slightly larger */
+    padding: 1px 2px;
     color: #555;
 }
 .project-actions button:hover {
     color: #000;
 }
 
+/* --- AI Settings --- */
+#ai-settings-container {
+    padding: 10px 10px 15px 10px;
+    border-top: 1px solid #ccc;
+    margin-top: auto; /* Push to bottom */
+    background-color: #d0d7e0;
+    flex-shrink: 0;
+}
+
+#ai-settings-title {
+    font-size: 0.9em;
+    font-weight: bold;
+    margin: 0 0 8px 0;
+    color: #333;
+}
+
+#ai-settings-title.ready::before {
+    content: '✅ ';
+    display: inline-block;
+    margin-right: 4px;
+}
+
+
+.ai-setting {
+    margin-bottom: 6px;
+}
+
+.ai-setting label {
+    display: block;
+    font-size: 0.8em;
+    margin-bottom: 2px;
+    color: #555;
+}
+
+.ai-setting input {
+    width: 100%;
+    padding: 4px 6px;
+    font-size: 0.85em;
+    border: 1px solid #aaa;
+    border-radius: 3px;
+    box-sizing: border-box;
+    font-family: monospace; /* Better for keys/urls */
+}
 
 /* --- Existing Column & Card Styles (mostly unchanged) --- */
 
@@ -203,6 +247,14 @@ body {
     opacity: 0.5;
     cursor: not-allowed;
 }
+/* Hide AI features by default, show via JS */
+.ai-feature {
+    display: none;
+}
+body.ai-ready .ai-feature {
+    display: initial; /* Or flex, block depending on element */
+}
+
 
 .cards-container {
     flex-grow: 1; /* Take remaining space in column */
@@ -240,7 +292,7 @@ body {
     font-size: 0.8em;
     user-select: none; /* Prevent text selection during drag */
     height: 19px; /* Fixed height for calculation */
-    gap: 5px; /* Add gap between items */
+    gap: 8px; /* Increased gap between items */
 }
 
 .card-name-display {
@@ -251,6 +303,7 @@ body {
     cursor: text; /* Indicate editable on dblclick */
     color: #777;
     padding: 0 3px; /* Small horizontal padding */
+    margin-right: auto; /* Push actions to the right */
 }
 
 .card-name-input {
@@ -264,6 +317,7 @@ body {
     background-color: #fff;
     height: 17px; /* Match header height minus padding/border */
     box-sizing: border-box;
+    margin-right: auto; /* Push actions to the right */
 }
 
 .card-name-input:focus {
@@ -271,20 +325,29 @@ body {
     box-shadow: 0 0 0 1px rgba(0, 123, 255, 0.25);
 }
 
+.card-ai-actions,
 .card-actions {
+    display: flex;
+    gap: 5px; /* Gap between buttons within a group */
     flex-shrink: 0; /* Prevent actions shrinking */
 }
-.card-actions button {
+.card-header button { /* Style all header buttons */
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 1.1em;
-    padding: 2px 4px;
+    font-size: 1.1em; /* Consistent emoji size */
+    padding: 0px 2px;
     color: #666;
+    line-height: 1; /* Prevent extra vertical space */
 }
-.card-actions button:hover {
+.card-header button:hover {
     color: #000;
 }
+.card-header button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
 
 .card-content {
     width: 100%;
@@ -300,6 +363,11 @@ body {
     background-color: transparent; /* Inherit card background */
     max-height: 500px; /* Add max-height */
 }
+.card-content.ai-loading {
+    font-style: italic;
+    color: #888;
+}
+
 
 /* --- Card Group Styling --- */
 .card-group {
@@ -357,4 +425,66 @@ body {
 /* --- Utility --- */
 .hidden {
     display: none !important;
+}
+
+/* --- Modal (Simple Placeholder) --- */
+/* Basic modal styling - replace with a more robust solution if needed */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background-color: white;
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    min-width: 300px;
+    max-width: 500px;
+}
+
+.modal-content h4 {
+    margin-top: 0;
+}
+
+.modal-content textarea {
+    width: 100%;
+    min-height: 80px;
+    margin-bottom: 10px;
+    padding: 8px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.modal-actions {
+    text-align: right;
+}
+
+.modal-actions button {
+    padding: 8px 15px;
+    margin-left: 10px;
+    cursor: pointer;
+    border-radius: 3px;
+    border: 1px solid #ccc;
+}
+.modal-actions button.primary {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+.modal-actions button.primary:hover {
+    background-color: #0056b3;
+}
+.modal-actions button:hover {
+    background-color: #f0f0f0;
 }

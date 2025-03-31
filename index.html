@@ -13,6 +13,21 @@
         <div id="project-list">
             <!-- Project list will be populated here -->
         </div>
+        <div id="ai-settings-container">
+            <h3 id="ai-settings-title">AI Settings</h3>
+            <div class="ai-setting">
+                <label for="ai-provider-url">Provider URL:</label>
+                <input type="password" id="ai-provider-url" placeholder="e.g., https://openrouter.ai/api/v1/chat/completions">
+            </div>
+            <div class="ai-setting">
+                <label for="ai-model-name">Model Name:</label>
+                <input type="password" id="ai-model-name" placeholder="e.g., google/gemini-flash-1.5">
+            </div>
+            <div class="ai-setting">
+                <label for="ai-api-key">API Key:</label>
+                <input type="password" id="ai-api-key" placeholder="Bearer Token">
+            </div>
+        </div>
     </div>
     <div id="resizer"></div>
     <div id="main-content">
@@ -23,6 +38,7 @@
         </div>
     </div>
 
+    <script src="aiService.js"></script> <!-- Include AI Service first -->
     <script src="script.js"></script>
 </body>
 </html>
