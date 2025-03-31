@@ -240,14 +240,40 @@ body {
     font-size: 0.8em;
     user-select: none; /* Prevent text selection during drag */
     height: 19px; /* Fixed height for calculation */
+    gap: 5px; /* Add gap between items */
 }
 
-.card-id {
-    font-family: monospace;
-    color: #555;
-    font-weight: bold;
+.card-name-display {
+    flex-grow: 1; /* Allow name to take available space */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: text; /* Indicate editable on dblclick */
+    color: #777;
+    padding: 0 3px; /* Small horizontal padding */
 }
 
+.card-name-input {
+    flex-grow: 1; /* Take available space */
+    border: 1px solid #999;
+    border-radius: 2px;
+    padding: 1px 4px;
+    font-size: inherit; /* Match header font size */
+    font-family: inherit;
+    outline: none;
+    background-color: #fff;
+    height: 17px; /* Match header height minus padding/border */
+    box-sizing: border-box;
+}
+
+.card-name-input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 1px rgba(0, 123, 255, 0.25);
+}
+
+.card-actions {
+    flex-shrink: 0; /* Prevent actions shrinking */
+}
 .card-actions button {
     background: none;
     border: none;

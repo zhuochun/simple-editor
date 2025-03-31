@@ -526,9 +526,13 @@ document.addEventListener('DOMContentLoaded', () => {
         card.color = card.color || getColorForCard(card); // getColorForCard uses getActiveProjectData by default
         cardEl.style.backgroundColor = card.color;
 
+        // Display name or ID
+        const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
+        const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
+
         cardEl.innerHTML = `
             <div class="card-header" draggable="true">
-                <span class="card-id">#${card.id.slice(-4)}</span>
+                <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-actions">
                     <button class="add-child-btn" title="Add Child Card">+</button>
                     <button class="delete-card-btn" title="Delete Card">×</button>
@@ -539,9 +543,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const headerEl = cardEl.querySelector('.card-header');
         const textarea = cardEl.querySelector('.card-content');
+        const nameDisplaySpan = cardEl.querySelector('.card-name-display');
 
         headerEl.addEventListener('dragstart', handleDragStart);
         headerEl.addEventListener('dragend', handleDragEnd);
+
+        // Add double-click listener for editing name
+        nameDisplaySpan.addEventListener('dblclick', () => makeCardNameEditable(card.id, cardEl));
 
         cardEl.addEventListener('dragenter', (e) => {
              if (e.target.closest('.card') === cardEl) e.stopPropagation();
@@ -572,12 +580,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!parentCard) return null;
 
         const groupEl = document.createElement('div');
+        const parentName = parentCard.name ? parentCard.name : `#${parentId.slice(-4)}`;
+        const truncatedParentName = parentName.length > 50 ? parentName.substring(0, 50) + '...' : parentName;
+
         groupEl.id = `group-${parentId}`;
         groupEl.className = 'card-group';
         groupEl.dataset.parentId = parentId;
 
         groupEl.innerHTML = `
-            <div class="group-header">Children of <strong>#${parentId.slice(-4)}</strong></div>
+            <div class="group-header" title="Children of ${parentName}">&gt;&gt; ${truncatedParentName}</div>
         `;
 
         groupEl.addEventListener('dragover', handleDragOver);
@@ -1125,7 +1136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const newCardId = generateId('card_');
         const newCard = {
-            id: newCardId, content: '', parentId: parentId,
+            id: newCardId, name: null, content: '', parentId: parentId,
             columnIndex: columnIndex, order: 0, color: ''
         };
 
@@ -1178,6 +1189,78 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         console.log(`Card ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order} in project ${activeProjectId}`);
     }
+
+    // --- Card Name Editing ---
+    function makeCardNameEditable(cardId, cardEl) {
+        const nameDisplaySpan = cardEl.querySelector('.card-name-display');
+        const header = cardEl.querySelector('.card-header');
+        if (!nameDisplaySpan || !header || header.querySelector('.card-name-input')) return; // Already editing
+
+        const card = getCard(cardId);
+        if (!card) return;
+
+        const currentName = card.name || ''; // Use empty string if null/undefined
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = currentName;
+        input.className = 'card-name-input';
+        input.maxLength = 50;
+        input.placeholder = `#${cardId.slice(-4)}`; // Show ID as placeholder
+
+        nameDisplaySpan.style.display = 'none'; // Hide the span
+        // Insert input before the actions div
+        const actionsDiv = header.querySelector('.card-actions');
+        header.insertBefore(input, actionsDiv);
+
+        input.focus();
+        input.select();
+
+        const finishEditing = (saveChanges) => {
+            const newNameRaw = input.value;
+            // Treat empty string as clearing the name (will display ID)
+            const newName = newNameRaw.trim() === '' ? null : newNameRaw.trim().substring(0, 50);
+
+            if (saveChanges && newName !== card.name) {
+                card.name = newName;
+                updateProjectLastModified();
+                saveProjectsData();
+                console.log(`Card ${cardId} name updated to "${newName}" in project ${activeProjectId}.`);
+            }
+
+            // Update display span content and title
+            const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
+            const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
+            nameDisplaySpan.textContent = truncatedDisplayName;
+            nameDisplaySpan.title = displayName; // Update tooltip
+
+            // Update parent group header if this card is a parent
+            const groupEl = getGroupElement(cardId);
+            if (groupEl) {
+                 const groupHeader = groupEl.querySelector('.group-header strong');
+                 const groupHeaderContainer = groupEl.querySelector('.group-header');
+                 if (groupHeader && groupHeaderContainer) {
+                     groupHeader.textContent = truncatedDisplayName;
+                     groupHeaderContainer.title = `Children of ${displayName}`;
+                 }
+            }
+
+
+            input.remove(); // Remove the input field
+            nameDisplaySpan.style.display = ''; // Show the span again
+        };
+
+        input.addEventListener('blur', () => finishEditing(true));
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                finishEditing(true);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                finishEditing(false);
+            }
+        });
+    }
+
 
     // REVISED: deleteCard - Operates on active project, updates lastModified, saves all
     function deleteCard(cardId) {
@@ -1396,7 +1479,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  }
              });
         }
-
 
         // --- Update colors of other root cards if hierarchy changed ---
         let rootColorsNeedUpdate = false;

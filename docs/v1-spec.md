@@ -15,8 +15,10 @@ The tool contains an interface with multiple columns of nested, editable cards.
 
 - Each column contains cards with a heading and an editable text area.
 - Cards are draggable, deletable, and can add child cards.
-- The heading displays the card ID (last 4 chars) on the left
-  - ID can be generated with by timestmap + random string
+- The heading displays the card Name if exists, or card ID (last 4 chars) on the left.
+  - ID is generated with by timestmap + random string.
+  - Name is optional, truncated to first 50 chars (no-wrap).
+  - User can double click on the left area to edit name. When pressed Enter or Blur, the edit is accepted. When pressed Escape, the edit is cancelled.
 - The heading contains symbol buttons to delete this card, or add a child card on the right
   - Skip delete confirmation if card is empty AND has no descendants
 - The heading area is also the handle for dragging
