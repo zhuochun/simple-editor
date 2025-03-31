@@ -1661,14 +1661,45 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Cannot set prompt for invalid column index:", columnIndex);
             return;
         }
-
         const currentPrompt = columnData.prompt || '';
-        const newPrompt = prompt(`Set a prompt for Column ${columnIndex + 1}.\nThis will be used by AI 'Continue' actions in this column.\nLeave blank to clear.`, currentPrompt);
 
-        if (newPrompt !== null) { // Prompt wasn't cancelled
-            const trimmedPrompt = newPrompt.trim();
-            if (columnData.prompt !== trimmedPrompt) {
-                columnData.prompt = trimmedPrompt;
+        // --- Modal Implementation ---
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+
+        const modal = document.createElement('div');
+        modal.className = 'modal-content';
+        modal.innerHTML = `
+            <h4>Set Prompt for Column ${columnIndex + 1}</h4>
+            <p>This prompt guides AI 'Continue' actions within this column.</p>
+            <textarea id="column-prompt-input" placeholder="e.g., Write in the style of a pirate.">${currentPrompt}</textarea>
+            <div class="modal-actions">
+                <button id="column-prompt-cancel">Cancel</button>
+                <button id="column-prompt-submit" class="primary">Save Prompt</button>
+            </div>
+        `;
+
+        overlay.appendChild(modal);
+        document.body.appendChild(overlay);
+
+        const promptInput = modal.querySelector('#column-prompt-input');
+        const cancelButton = modal.querySelector('#column-prompt-cancel');
+        const submitButton = modal.querySelector('#column-prompt-submit');
+        promptInput.focus();
+        promptInput.select(); // Select existing text
+
+        const closeModal = () => {
+            if (overlay.parentNode === document.body) {
+                document.body.removeChild(overlay);
+            }
+        };
+
+        cancelButton.addEventListener('click', closeModal);
+        submitButton.addEventListener('click', () => {
+            const newPrompt = promptInput.value.trim(); // Trim the input value
+
+            if (columnData.prompt !== newPrompt) { // Check if it actually changed
+                columnData.prompt = newPrompt; // Save the trimmed prompt (or empty string)
                 updateProjectLastModified();
                 saveProjectsData();
                 // Update the button indicator in the specific column
@@ -1676,7 +1707,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (columnEl) updateToolbarButtons(columnEl, columnIndex);
                 console.log(`Column ${columnIndex} prompt updated.`);
             }
-        }
+            closeModal(); // Close modal after processing
+        });
+
+        // Allow submitting with Enter in textarea
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault(); // Prevent newline
+                submitButton.click(); // Trigger submit
+            } else if (e.key === 'Escape') {
+                 e.preventDefault();
+                 closeModal(); // Close on Escape
+            }
+        });
+         // Close if clicking outside the modal content
+         overlay.addEventListener('click', (e) => {
+             if (e.target === overlay) {
+                 closeModal();
+             }
+         });
     }
 
 
