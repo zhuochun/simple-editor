@@ -1,6 +1,6 @@
 const AI_SERVICE_CONFIG = {
-    SITE_URL: "http://localhost:8080", // Or your deployed URL
-    SITE_NAME: "Interactive Writing Tool",
+    SITE_URL: "https://www.bicrement.com/simple-editor/", // Or your deployed URL
+    SITE_NAME: "Bicrement Writing Tool",
     STORAGE_KEY_AI_SETTINGS: 'writingToolAiSettings'
 };
 
