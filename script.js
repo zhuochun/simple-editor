@@ -31,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const AI_SYSTEM_PROMPT = `You are an AI writing assistant embedded in a column-based, hierarchical writing app where content is organized in discrete cards.
 Each card represents a unit of content that can be independently created, expanded, or rearranged.
 Your role is to help users brainstorm, structure, enrich, refine, and review their writing by generating content that fits within this card-based framework.
-Always output in plain text and output the card content directly without unnecessary explanations or introductions.
+Always output in plain text (no markdow format) and output the card content directly without unnecessary explanations or introductions.
 When creating separate cards, clearly separate each card using "---" as a delimiter.
 Stick to the card-based structure and maintain clarity, coherence, and consistency in your responses.`
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
@@ -670,8 +670,8 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-ai-actions ai-feature">
                      <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>⬇️</button>
-                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
-                     <button class="ai-breakdown-btn" title="Breakdown (to next column)" ${!aiReady ? 'disabled' : ''}>📶</button>
+                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>🪴</button>
+                     <button class="ai-breakdown-btn" title="Brainstorm (to next column)" ${!aiReady ? 'disabled' : ''}>🧠</button>
                      <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
                 </div>
                 <div class="card-actions">
@@ -2003,7 +2003,7 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
 
         const cardsAbove = siblings.filter(c => c.order < currentCard.order);
         let contextText = cardsAbove.map(c => c.content || '').join('\n\n').trim();
-        if (contextText) contextText += '\n\n'; // Add separator if there was content above
+        if (contextText) contextText += '\n\n---\n\n'; // Add separator if there was content above
         contextText += currentCard.content || '';
 
         return { contextText: contextText.trim(), columnPrompt };
