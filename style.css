@@ -396,7 +396,6 @@ body.ai-ready .ai-feature {
     display: block;
     box-sizing: border-box;
     background-color: transparent; /* Inherit card background */
-    max-height: 500px; /* Add max-height */
 }
 .card-content.ai-loading {
     font-style: italic;

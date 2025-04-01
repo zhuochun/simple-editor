@@ -948,7 +948,7 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         // Use computed height to avoid jumps if scrollHeight is temporarily large
         const computedHeight = window.getComputedStyle(textarea).height;
         textarea.style.height = computedHeight; // Set explicit height before recalculating
-        textarea.style.height = `${Math.min(textarea.scrollHeight, 500)}px`; // 500px max height
+        textarea.style.height = `${textarea.scrollHeight}px`; // Allow textarea to grow based on content
     }
 
     // --- Event Handlers (Adapted for Active Project where necessary) ---
