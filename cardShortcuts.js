@@ -1,0 +1,204 @@
+// Helper function to calculate cursor line (0-based)
+function getCursorLine(textarea) {
+    const text = textarea.value;
+    const selectionStart = textarea.selectionStart;
+    let line = 0;
+    for (let i = 0; i < selectionStart; i++) {
+        if (text[i] === '\n') {
+            line++;
+        }
+    }
+    return line;
+}
+
+// Helper function to calculate total lines
+function getTotalLines(textarea) {
+    return textarea.value.split('\n').length;
+}
+
+// Main keyboard shortcut handler for card textareas
+function handleCardTextareaKeydown(event, helpers) {
+    const textarea = event.target;
+
+    // Ensure the event target is a card textarea
+    if (!textarea || !textarea.matches('textarea.card-content')) {
+        return;
+    }
+
+    const cardEl = textarea.closest('.card');
+    if (!cardEl) return;
+    const cardId = cardEl.dataset.cardId;
+    if (!cardId) return;
+
+    const ctrlPressed = event.ctrlKey || event.metaKey; // Handle Cmd on Mac
+    const altPressed = event.altKey;
+
+    // --- Shortcut Definitions ---
+
+    switch (event.key) {
+        case 'Enter':
+            // === Ctrl+Enter: Create New Card Below ===
+            if (ctrlPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Ctrl+Enter on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                // Find next sibling to insert before
+                let insertBeforeCardId = null;
+                let siblings;
+                if (currentCardData.parentId) {
+                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                } else {
+                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                }
+                const currentIndex = siblings.findIndex(c => c.id === cardId);
+                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                    insertBeforeCardId = siblings[currentIndex + 1].id;
+                }
+
+                // Add card (focus/scroll is handled by addCard)
+                helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, '', insertBeforeCardId);
+            }
+            // === Alt+Enter: Create New Child Card ===
+            else if (altPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Alt+Enter on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                const targetColumnIndex = currentCardData.columnIndex + 1;
+                // Add card as child in next column (focus/scroll is handled by addCard)
+                helpers.addCard(targetColumnIndex, cardId, '');
+            }
+            break;
+
+        // === Down Arrow: Move to Next Card (if on last line) ===
+        case 'ArrowDown':
+            if (!ctrlPressed && !altPressed) {
+                const cursorLine = getCursorLine(textarea);
+                const totalLines = getTotalLines(textarea);
+                // Check if cursor is on the last line
+                // Note: Simple check, doesn't account perfectly for wrapped lines but good enough
+                if (cursorLine === totalLines - 1 && textarea.selectionStart === textarea.value.length) {
+                    event.preventDefault(); // Prevent default cursor move
+                    console.log(`Shortcut: Down (last line) on card ${cardId}`);
+                    const currentCardData = helpers.getCard(cardId);
+                    if (!currentCardData) return;
+
+                    let siblings;
+                    if (currentCardData.parentId) {
+                        siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                    } else {
+                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                    }
+                    const currentIndex = siblings.findIndex(c => c.id === cardId);
+                    if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                        const nextCardId = siblings[currentIndex + 1].id;
+                        helpers.focusCardTextarea(nextCardId, 'start'); // Focus start of next card
+                    }
+                }
+            }
+            // === Alt+Down: Move Focus to Next Card ===
+            else if (altPressed && !ctrlPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Ctrl+Down on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                let siblings;
+                if (currentCardData.parentId) {
+                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                } else {
+                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                }
+                const currentIndex = siblings.findIndex(c => c.id === cardId);
+                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                    const nextCardId = siblings[currentIndex + 1].id;
+                    helpers.focusCardTextarea(nextCardId, 'preserve'); // Preserve position if possible, otherwise start
+                }
+            }
+            break;
+
+        // === Up Arrow: Move to Previous Card (if on first line) ===
+        case 'ArrowUp':
+             if (!ctrlPressed && !altPressed) {
+                const cursorLine = getCursorLine(textarea);
+                // Check if cursor is on the first line
+                if (cursorLine === 0 && textarea.selectionStart === 0) {
+                    event.preventDefault(); // Prevent default cursor move
+                    console.log(`Shortcut: Up (first line) on card ${cardId}`);
+                    const currentCardData = helpers.getCard(cardId);
+                    if (!currentCardData) return;
+
+                    let siblings;
+                    if (currentCardData.parentId) {
+                        siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                    } else {
+                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                    }
+                    const currentIndex = siblings.findIndex(c => c.id === cardId);
+                    if (currentIndex > 0) {
+                        const prevCardId = siblings[currentIndex - 1].id;
+                        helpers.focusCardTextarea(prevCardId, 'end'); // Focus end of previous card
+                    }
+                }
+            }
+            // === Alt+Up: Move Focus to Previous Card ===
+            else if (altPressed && !ctrlPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Ctrl+Up on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                let siblings;
+                if (currentCardData.parentId) {
+                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                } else {
+                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                }
+                const currentIndex = siblings.findIndex(c => c.id === cardId);
+                if (currentIndex > 0) {
+                    const prevCardId = siblings[currentIndex - 1].id;
+                    helpers.focusCardTextarea(prevCardId, 'preserve'); // Preserve position if possible, otherwise end
+                }
+            }
+            break;
+
+        // === Alt+Left: Move Focus to Parent Card ===
+        case 'ArrowLeft':
+            if (altPressed && !ctrlPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Alt+Left on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData || !currentCardData.parentId) return; // Must have a parent
+
+                helpers.focusCardTextarea(currentCardData.parentId, 'end'); // Focus end of parent card
+            }
+            break;
+
+        // === Alt+Right: Move Focus to First Child Card ===
+        case 'ArrowRight':
+            if (altPressed && !ctrlPressed) {
+                event.preventDefault();
+                console.log(`Shortcut: Alt+Right on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                const childColumnIndex = currentCardData.columnIndex + 1;
+                const children = helpers.getChildCards(cardId, childColumnIndex); // Get children in next column
+
+                if (children.length > 0) {
+                    const firstChildId = children[0].id;
+                    helpers.focusCardTextarea(firstChildId, 'start'); // Focus start of first child
+                }
+            }
+            break;
+    }
+}
+
+// Make the handler available (e.g., attaching to window or exporting if using modules)
+// Simple approach for now: attach to window
+window.cardShortcuts = {
+    handleCardTextareaKeydown
+};

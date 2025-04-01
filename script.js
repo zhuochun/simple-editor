@@ -2310,6 +2310,58 @@ document.addEventListener('DOMContentLoaded', () => {
          });
     }
 
+    // --- Keyboard Navigation Helpers ---
+
+    function scrollIntoViewIfNeeded(element) {
+        if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    /**
+     * Finds a card's textarea, focuses it, sets cursor position, and scrolls into view.
+     * @param {string} cardId - The ID of the card to focus.
+     * @param {'start' | 'end' | 'preserve'} [position='preserve'] - Where to place the cursor.
+     */
+    function focusCardTextarea(cardId, position = 'preserve') {
+        const cardEl = getCardElement(cardId);
+        if (!cardEl) {
+            console.warn(`focusCardTextarea: Card element not found for ID ${cardId}`);
+            return;
+        }
+        const textarea = cardEl.querySelector('textarea.card-content');
+        if (!textarea) {
+            console.warn(`focusCardTextarea: Textarea not found for card ID ${cardId}`);
+            return;
+        }
+
+        // Ensure textarea is visible and interactable before focusing
+        // (May need more robust checks depending on CSS transitions/visibility)
+        textarea.style.display = ''; // Ensure it's not display: none
+
+        textarea.focus(); // Focus the element first
+
+        // Set selection based on position after focus
+        requestAnimationFrame(() => { // Use rAF to ensure focus is applied
+             try {
+                 if (position === 'start') {
+                     textarea.setSelectionRange(0, 0);
+                 } else if (position === 'end') {
+                     const len = textarea.value.length;
+                     textarea.setSelectionRange(len, len);
+                 } else {
+                     // 'preserve' - Do nothing, keep existing selection/cursor position
+                     // If focusing from non-input, it usually defaults to start, which is okay.
+                 }
+             } catch (e) {
+                 console.error(`Error setting selection range for card ${cardId}:`, e);
+             }
+             scrollIntoViewIfNeeded(cardEl); // Scroll after focusing and setting position
+             highlightHierarchy(cardId); // Also highlight the hierarchy when focusing via shortcut
+        });
+        console.log(`Focused card ${cardId}, position: ${position}`);
+    }
+
 
     // --- Initial Load ---
     // Initialize AI Settings UI and logic from aiService
@@ -2326,5 +2378,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add Project Button Listener
     addProjectBtn.addEventListener('click', addProject);
+
+    // --- Keyboard Shortcut Integration ---
+    // Define the helpers object to pass to the shortcut handler
+    const shortcutHelpers = {
+        getCard: getCard, // Function from main.js
+        addCard: addCard, // Function from main.js
+        focusCardTextarea: focusCardTextarea, // Newly added helper
+        getCardElement: getCardElement, // Function from main.js
+        getColumnCards: getColumnCards, // Function from main.js
+        getChildCards: getChildCards, // Function from main.js
+    };
+
+    // Attach the single keydown listener using event delegation
+    columnsContainer.addEventListener('keydown', (event) => {
+        // Check if the cardShortcuts handler is available (due to defer loading)
+        if (window.cardShortcuts && typeof window.cardShortcuts.handleCardTextareaKeydown === 'function') {
+            window.cardShortcuts.handleCardTextareaKeydown(event, shortcutHelpers);
+        } else {
+             console.warn("cardShortcuts handler not yet available.");
+        }
+    });
 
 }); // End DOMContentLoaded
