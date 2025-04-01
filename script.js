@@ -1493,13 +1493,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!card) return;
 
         const descendantIds = getDescendantIds(cardId); // Uses active project data
+        const descendantCardsWithContent = descendantIds.filter(id => {
+            const descCard = projectData.cards[id];
+            return descCard && descCard.content?.trim() !== '';
+        });
         const allIdsToDelete = [cardId, ...descendantIds];
-        const numDescendants = descendantIds.length;
+        const numDescendants = descendantCardsWithContent.length;
         const wasRoot = !card.parentId && card.columnIndex === 0;
         const hasContent = card.content?.trim() !== ''; // Check if content exists (trimmed)
 
-        // Skip confirmation if card is empty AND has no descendants
-        const shouldConfirm = hasContent || numDescendants > 0;
+        // Skip confirmation if card has no descendants with content
+        const shouldConfirm = numDescendants > 0;
 
         if (shouldConfirm) {
             if (!confirm(`Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${numDescendants} descendant(s) from project "${projects[activeProjectId].title}"?`)) {
