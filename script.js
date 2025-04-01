@@ -28,109 +28,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const LIGHTNESS_STEP_DOWN = 5;
     const SATURATION_STEP_UP = 5;
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
-    const AI_SYSTEM_PROMPT = `You are an AI writing assistant embedded in a column-based, hierarchical writing app where content is organized in discrete cards.
-Each card represents a unit of content that can be independently created, expanded, or rearranged.
-Your role is to help users brainstorm, structure, enrich, refine, and review their writing by generating content that fits within this card-based framework.
-Always output in plain text (no markdow format) and output the card content directly without unnecessary explanations or introductions.
-When creating multiple cards, clearly separate the cards using "---" as a delimiter.
-Stick to the card-based structure and maintain clarity, coherence, and consistency in your responses.`
+    // AI_SYSTEM_PROMPT moved to aiService.js
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
-    const AI_SETTINGS_STORAGE_KEY = 'writingToolAiSettings'; // Use the one defined in aiService
+    // AI_SETTINGS_STORAGE_KEY is managed within aiService.js
 
 
-    // --- AI Settings Management ---
+    // --- AI Settings Management (Delegated to aiService.js) ---
 
-    function loadAiSettings() {
-        const storedSettings = localStorage.getItem(AI_SETTINGS_STORAGE_KEY);
-        if (storedSettings) {
-            try {
-                aiSettings = JSON.parse(storedSettings);
-                // Ensure structure compatibility
-                aiSettings.providerUrl = aiSettings.providerUrl || '';
-                aiSettings.modelName = aiSettings.modelName || '';
-                aiSettings.apiKey = aiSettings.apiKey || '';
-            } catch (e) {
-                console.error("Error parsing AI settings from localStorage:", e);
-                aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
-            }
-        } else {
-            aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
-        }
-        updateAiSettingsUI();
-        updateAiFeatureVisibility(); // Update based on loaded settings
-    }
-
-    function saveAiSettings() {
-        // Read directly from inputs to save current values
-        aiSettings = {
-            providerUrl: aiProviderUrlInput.dataset.value || '', // Use data-value
-            modelName: aiModelNameInput.dataset.value || '',
-            apiKey: aiApiKeyInput.dataset.value || ''
-        };
-        localStorage.setItem(AI_SETTINGS_STORAGE_KEY, JSON.stringify(aiSettings));
-        updateAiFeatureVisibility(); // Update based on saved settings
-        console.log("AI Settings Saved.");
-    }
-
-    function updateAiSettingsUI() {
-        // Store actual value in data attribute, display masked value
-        aiProviderUrlInput.dataset.value = aiSettings.providerUrl || '';
-        aiModelNameInput.dataset.value = aiSettings.modelName || '';
-        aiApiKeyInput.dataset.value = aiSettings.apiKey || '';
-
-        aiProviderUrlInput.value = aiSettings.providerUrl ? '******' : '';
-        aiModelNameInput.value = aiSettings.modelName ? '******' : '';
-        aiApiKeyInput.value = aiSettings.apiKey ? '******' : '';
-
-        // Update title checkmark
-        const isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
-        aiSettingsTitle.classList.toggle('ready', isValid);
-    }
-
-    function handleAiInputFocus(event) {
-        const input = event.target;
-        input.type = 'text'; // Show actual value
-        input.value = input.dataset.value || '';
-    }
-
-    function handleAiInputBlur(event) {
-        const input = event.target;
-        // Save the potentially changed value into data-value before masking
-        input.dataset.value = input.value;
-        if (input.value) {
-            input.type = 'password'; // Mask if not empty
-            input.value = '******';
-        } else {
-            input.type = 'text'; // Keep as text if empty
-            input.value = '';
-        }
-        saveAiSettings(); // Save on blur
-    }
-
-    function areAiSettingsValid() {
-        // Check the locally cached settings object after loading/saving
-        return !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
-    }
-
-    function updateAiFeatureVisibility() {
-        const isValid = areAiSettingsValid();
+    // This function will be passed to aiService to update UI based on settings validity
+    function updateAiFeatureVisibility(isValid) {
+        // const isValid = aiService.areAiSettingsValid(); // Use aiService check
         document.body.classList.toggle('ai-ready', isValid);
-        // You might also need to disable/enable buttons specifically if needed
+        // Disable/enable buttons based on validity
         document.querySelectorAll('.ai-feature button').forEach(btn => {
             btn.disabled = !isValid;
         });
-        // Update title checkmark
-        aiSettingsTitle.classList.toggle('ready', isValid);
+        // Update title checkmark (aiService handles this via its updateAiSettingsUI)
+        // aiSettingsTitle.classList.toggle('ready', isValid); // Let aiService handle this
     }
-
-    // Add AI Setting Listeners
-    aiProviderUrlInput.addEventListener('focus', handleAiInputFocus);
-    aiProviderUrlInput.addEventListener('blur', handleAiInputBlur);
-    aiModelNameInput.addEventListener('focus', handleAiInputFocus);
-    aiModelNameInput.addEventListener('blur', handleAiInputBlur);
-    aiApiKeyInput.addEventListener('focus', handleAiInputFocus);
-    aiApiKeyInput.addEventListener('blur', handleAiInputBlur);
 
     // --- Project Management ---
 
@@ -662,8 +578,8 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
         const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
 
-        // Check AI readiness for button state
-        const aiReady = areAiSettingsValid();
+        // Check AI readiness for button state (using aiService)
+        const aiReady = aiService.areAiSettingsValid();
 
         cardEl.innerHTML = `
             <div class="card-header" draggable="true">
@@ -713,13 +629,11 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
              deleteCard(card.id);
         });
 
-        // AI Actions (only add listeners if AI is potentially ready)
-        if (aiReady) { // Could also check here, but CSS handles visibility
-            headerEl.querySelector('.ai-continue-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiContinue(card.id); });
-            headerEl.querySelector('.ai-breakdown-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiBreakdown(card.id); });
-            headerEl.querySelector('.ai-expand-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiExpand(card.id); });
-            headerEl.querySelector('.ai-custom-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiCustom(card.id); });
-        }
+        // AI Actions - Add listeners regardless, disable state handled by updateAiFeatureVisibility
+        headerEl.querySelector('.ai-continue-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiContinue(card.id); });
+        headerEl.querySelector('.ai-breakdown-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiBreakdown(card.id); });
+        headerEl.querySelector('.ai-expand-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiExpand(card.id); });
+        headerEl.querySelector('.ai-custom-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiCustom(card.id); });
 
 
         return cardEl;
@@ -795,7 +709,7 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         const columnEl = document.createElement('div');
         columnEl.className = 'column';
         columnEl.dataset.columnIndex = columnIndex;
-        const aiReady = areAiSettingsValid();
+        const aiReady = aiService.areAiSettingsValid(); // Use aiService check
         const columnData = getColumnData(columnIndex);
         const promptIndicator = columnData?.prompt ? '📝' : ''; // Indicator if prompt exists
 
@@ -937,7 +851,7 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
          if (addPromptBtn) {
              const promptIndicator = columnData?.prompt ? '📝' : '';
              addPromptBtn.textContent = `Prompt ${promptIndicator}`;
-             addPromptBtn.disabled = !areAiSettingsValid(); // Also disable if AI not ready
+             addPromptBtn.disabled = !aiService.areAiSettingsValid(); // Also disable if AI not ready
          }
     }
 
@@ -1691,6 +1605,7 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         const promptInput = modal.querySelector('#column-prompt-input');
         const cancelButton = modal.querySelector('#column-prompt-cancel');
         const submitButton = modal.querySelector('#column-prompt-submit');
+
         promptInput.focus();
         promptInput.select(); // Select existing text
 
@@ -1716,16 +1631,6 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
             closeModal(); // Close modal after processing
         });
 
-        // Allow submitting with Enter in textarea
-        promptInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault(); // Prevent newline
-                submitButton.click(); // Trigger submit
-            } else if (e.key === 'Escape') {
-                 e.preventDefault();
-                 closeModal(); // Close on Escape
-            }
-        });
          // Close if clicking outside the modal content
          overlay.addEventListener('click', (e) => {
              if (e.target === overlay) {
@@ -2009,8 +1914,10 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
         return { contextText: contextText.trim(), columnPrompt };
     }
 
+    // --- AI Action Handlers (Using aiService) ---
+
     function handleAiContinue(cardId) {
-        if (!areAiSettingsValid()) {
+        if (!aiService.areAiSettingsValid()) {
             alert("Please configure AI settings first.");
             return;
         }
@@ -2019,19 +1926,19 @@ Stick to the card-based structure and maintain clarity, coherence, and consisten
 
         const { contextText, columnPrompt } = getCardContextForContinue(cardId);
 
-        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
-        let userPrompt = '';
-        if (columnPrompt) {
-            userPrompt += `## Author Provided Context\n\n${columnPrompt}`
-        }
-        userPrompt += `\n\n## Existing Cards\n\n${contextText}`
-        userPrompt += `\n\n## Instruction\n\nGiven the above context and existing cards, create the next card that logically continues and expands on the sequence.
-Ensure continuity, coherence, and clarity in content and structure.`
-        messages.push({ role: "user", content: userPrompt });
-
         // Create placeholder card *after* the current card
         const placeholderContent = "AI is thinking...";
-        const newCardId = addCard(card.columnIndex, card.parentId, placeholderContent, card.nextSibling?.id); // Insert after current card
+        // Find the next sibling ID to insert before
+        let insertBeforeId = null;
+        let siblings;
+        if (card.parentId) siblings = getChildCards(card.parentId, card.columnIndex);
+        else siblings = getColumnCards(card.columnIndex);
+        const currentIndex = siblings.findIndex(c => c.id === cardId);
+        if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+            insertBeforeId = siblings[currentIndex + 1].id;
+        }
+
+        const newCardId = addCard(card.columnIndex, card.parentId, placeholderContent, insertBeforeId);
         if (!newCardId) return; // Failed to create card
 
         const newCardEl = getCardElement(newCardId);
@@ -2043,9 +1950,9 @@ Ensure continuity, coherence, and clarity in content and structure.`
              return;
         }
 
-        let fullResponse = '';
-        aiService.streamChatCompletion({
-            messages: messages,
+        aiService.generateContinuation({
+            contextText,
+            columnPrompt,
             onChunk: (delta) => {
                 if (newTextarea.value === placeholderContent) {
                     newTextarea.value = ''; // Clear placeholder on first chunk
@@ -2074,20 +1981,12 @@ Ensure continuity, coherence, and clarity in content and structure.`
     }
 
     function handleAiBreakdown(cardId) {
-        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
         const card = getCard(cardId);
         if (!card || !card.content?.trim()) { alert("Card has no content to breakdown."); return; }
 
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCards = card.id; // New cards are children of the original
-
-        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
-        messages.push({
-            role: "user",
-            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nExpand the current card by brainstorming multiple child cards.
-Each child card should build on the ideas in the current card, remain consistent with the overall context, and offer new insights or directions.
-Please clearly separate each card using "---" as a delimiter.`
-        });
 
         // Create a single temporary placeholder in the next column
         const placeholderContent = "AI is thinking...";
@@ -2103,8 +2002,8 @@ Please clearly separate each card using "---" as a delimiter.`
              return;
         }
 
-        aiService.streamChatCompletion({
-            messages: messages,
+        aiService.generateBreakdown({
+            cardContent: card.content,
             onChunk: (delta) => {
                  // Update the temporary card visually while streaming
                  if (tempTextarea.value === placeholderContent) {
@@ -2142,7 +2041,7 @@ Please clearly separate each card using "---" as a delimiter.`
                     } else {
                         console.error("Could not find temp card data or textarea to reuse.");
                         // Fallback: delete the temp card if it couldn't be reused properly
-                        deleteCard(tempCardId);
+                        if(getCard(tempCardId)) deleteCard(tempCardId); // Delete only if it still exists
                     }
 
                     // Create new cards for the remaining parts
@@ -2175,7 +2074,7 @@ Please clearly separate each card using "---" as a delimiter.`
                 } else {
                     // No valid parts returned, delete the temporary card
                     console.log("AI Breakdown: No valid parts returned, deleting temp card.");
-                    deleteCard(tempCardId);
+                    if(getCard(tempCardId)) deleteCard(tempCardId); // Delete only if it still exists
                 }
 
                 // Ensure save after all modifications
@@ -2184,7 +2083,7 @@ Please clearly separate each card using "---" as a delimiter.`
                 console.log(`AI Breakdown completed for card ${cardId}.`);
 
                 // Optional: scroll to the last card (either reused or newly created)
-                if (lastCardId) {
+                if (lastCardId && getCard(lastCardId)) { // Check if lastCardId is still valid
                     requestAnimationFrame(() => {
                         const lastEl = getCardElement(lastCardId);
                         if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -2195,19 +2094,12 @@ Please clearly separate each card using "---" as a delimiter.`
     }
 
     function handleAiExpand(cardId) {
-        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
         const card = getCard(cardId);
         if (!card || !card.content?.trim()) { alert("Card has no content to expand."); return; }
 
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCard = card.id; // New card is child of the original
-
-        const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
-        messages.push({
-            role: "user",
-            content: `## Current Card\n\n${card.content}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version.
-Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`
-        });
 
         const placeholderContent = "AI is thinking...";
         // Add as a child in the next column
@@ -2223,8 +2115,8 @@ Include additional context, descriptive elements, and insights that deepen the n
              return;
         }
 
-        aiService.streamChatCompletion({
-            messages: messages,
+        aiService.generateExpand({
+            cardContent: card.content,
             onChunk: (delta) => {
                 if (newTextarea.value === placeholderContent) {
                     newTextarea.value = '';
@@ -2253,7 +2145,7 @@ Include additional context, descriptive elements, and insights that deepen the n
     }
 
     function handleAiCustom(cardId) {
-        if (!areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
         const card = getCard(cardId);
         if (!card) return;
 
@@ -2279,10 +2171,13 @@ Include additional context, descriptive elements, and insights that deepen the n
         const promptInput = modal.querySelector('#custom-prompt-input');
         const cancelButton = modal.querySelector('#custom-prompt-cancel');
         const submitButton = modal.querySelector('#custom-prompt-submit');
+
         promptInput.focus();
 
         const closeModal = () => {
-            document.body.removeChild(overlay);
+            if (overlay.parentNode === document.body) { // Check if still attached
+                 document.body.removeChild(overlay);
+            }
         };
 
         cancelButton.addEventListener('click', closeModal);
@@ -2298,12 +2193,6 @@ Include additional context, descriptive elements, and insights that deepen the n
             const targetColumnIndex = card.columnIndex + 1;
             const parentIdForNewCard = card.id;
 
-            const messages = [{ role: "system", content: AI_SYSTEM_PROMPT }];
-            messages.push({
-                role: "user",
-                content: `## Current Card\n\n${card.content}\n\n## Instruction\n\n${userPrompt}`
-            });
-
             const placeholderContent = "AI is thinking...";
             const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
             if (!newCardId) return;
@@ -2317,8 +2206,9 @@ Include additional context, descriptive elements, and insights that deepen the n
                  return;
              }
 
-            aiService.streamChatCompletion({
-                messages: messages,
+            aiService.generateCustom({
+                cardContent: card.content,
+                userPrompt: userPrompt,
                 onChunk: (delta) => {
                     if (newTextarea.value === placeholderContent) {
                         newTextarea.value = '';
@@ -2345,22 +2235,27 @@ Include additional context, descriptive elements, and insights that deepen the n
                 }
             });
         });
-        // Allow submitting with Enter in textarea
-         promptInput.addEventListener('keydown', (e) => {
-             if (e.key === 'Enter' && !e.shiftKey) {
-                 e.preventDefault(); // Prevent newline
-                 submitButton.click(); // Trigger submit
+         // Close if clicking outside the modal content
+         overlay.addEventListener('click', (e) => {
+             if (e.target === overlay) {
+                 closeModal();
              }
          });
     }
 
 
     // --- Initial Load ---
-    loadAiSettings(); // Load AI settings first
+    // Initialize AI Settings UI and logic from aiService
+    aiService.initializeAiSettings({
+        providerUrlInput: aiProviderUrlInput,
+        modelNameInput: aiModelNameInput,
+        apiKeyInput: aiApiKeyInput,
+        titleElement: aiSettingsTitle,
+        updateAiFeatureVisibilityCallback: updateAiFeatureVisibility // Pass the callback
+    });
     loadProjectsData(); // Loads all projects and determines/loads the active one
     renderProjectList(); // Render the sidebar
     renderApp(); // Render the main view for the active project
-    updateAiFeatureVisibility(); // Ensure features are shown/hidden based on initial settings
 
     // Add Project Button Listener
     addProjectBtn.addEventListener('click', addProject);
