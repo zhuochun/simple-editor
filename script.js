@@ -8,7 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const projectListContainer = document.getElementById('project-list');
 
     // AI Settings Elements
-    const aiSettingsContainer = document.getElementById('ai-settings-container');
     const aiSettingsTitle = document.getElementById('ai-settings-title');
     const aiProviderUrlInput = document.getElementById('ai-provider-url');
     const aiModelNameInput = document.getElementById('ai-model-name');
@@ -18,20 +17,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeProjectId = null;
     let draggedCardId = null;
     let dragIndicator = null;
-    let aiSettings = { providerUrl: '', modelName: '', apiKey: '', isValid: false }; // Local cache
 
     const MIN_COLUMNS = 3;
     const BASE_COLOR_HUE = 200; // Starting Hue for first root card
     const HUE_ROTATION_STEP = 30; // Degrees to shift hue for each subsequent root card
     const BASE_COLOR_SATURATION = 60;
     const BASE_COLOR_LIGHTNESS = 90;
-    const LIGHTNESS_STEP_DOWN = 5;
-    const SATURATION_STEP_UP = 5;
+    const GROUP_LIGHTNESS_STEP_DOWN = 3; // How much darker each card in a group gets vs the one above it
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
-    // AI_SYSTEM_PROMPT moved to aiService.js
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
-    // AI_SETTINGS_STORAGE_KEY is managed within aiService.js
 
 
     // --- AI Settings Management (Delegated to aiService.js) ---
@@ -44,8 +39,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.ai-feature button').forEach(btn => {
             btn.disabled = !isValid;
         });
-        // Update title checkmark (aiService handles this via its updateAiSettingsUI)
-        // aiSettingsTitle.classList.toggle('ready', isValid); // Let aiService handle this
     }
 
     // --- Project Management ---
@@ -491,8 +484,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (card.parentId) { // Child Card
             const parentCard = getParent(card.parentId);
             if (!parentCard) {
-                 console.warn(`Parent card ${card.parentId} not found for card ${card.id}. Using default color.`);
-                 return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - LIGHTNESS_STEP_DOWN}%)`;
+                console.warn(`Parent card ${card.parentId} not found for card ${card.id}. Using default color.`);
+                // Fallback: Use a slightly darker default color if parent is missing
+                return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - GROUP_LIGHTNESS_STEP_DOWN}%)`;
             }
 
             // Ensure parent color is calculated if missing (pass projectData down)
@@ -501,27 +495,43 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const match = parentColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
                 if (match) {
-                    let [, h, s, l] = match.map(Number);
-                    const newLightness = Math.max(15, l - LIGHTNESS_STEP_DOWN);
-                    const newSaturation = Math.min(100, s + SATURATION_STEP_UP);
-                    return `hsl(${h}, ${newSaturation}%, ${newLightness}%)`;
+                    let [, h, s, l] = match.map(Number); // Inherit parent's H, S, L
+
+                    // Find siblings in the same group (same parent, same column)
+                    const siblings = Object.values(projectData.cards)
+                        .filter(c => c.parentId === card.parentId && c.columnIndex === card.columnIndex)
+                        .sort((a, b) => a.order - b.order);
+
+                    // Find the index of the current card among its siblings
+                    const siblingIndex = siblings.findIndex(c => c.id === card.id);
+                    const indexInGroup = siblingIndex >= 0 ? siblingIndex : 0; // Default to 0 if not found (shouldn't happen)
+
+                    // Calculate new lightness based on position within the group
+                    const newLightness = Math.max(15, l - (indexInGroup * GROUP_LIGHTNESS_STEP_DOWN));
+                    // Keep parent's saturation for now, or adjust slightly if desired:
+                    // const newSaturation = Math.min(100, s + (indexInGroup * 1)); // Optional: slightly increase saturation too
+
+                    return `hsl(${h}, ${s}%, ${newLightness}%)`; // Use parent's hue and saturation, adjusted lightness
                 } else {
-                     console.warn(`Could not parse parent color ${parentColor}. Using fallback.`);
-                     let level = getCardDepth(card.id, projectData);
-                     const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
-                     const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
-                     return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
+                    console.warn(`Could not parse parent color ${parentColor}. Using fallback based on group position.`);
+                    // Fallback: Still try to darken based on group position if parent color parsing failed
+                    const siblings = Object.values(projectData.cards)
+                        .filter(c => c.parentId === card.parentId && c.columnIndex === card.columnIndex)
+                        .sort((a, b) => a.order - b.order);
+                    const siblingIndex = siblings.findIndex(c => c.id === card.id);
+                    const indexInGroup = siblingIndex >= 0 ? siblingIndex : 0;
+                    const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (indexInGroup * GROUP_LIGHTNESS_STEP_DOWN));
+                    return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${lightness}%)`;
                 }
             } catch (e) {
-                 console.error("Error processing parent color:", e);
-                 let level = getCardDepth(card.id, projectData);
-                 const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (level * LIGHTNESS_STEP_DOWN));
-                 const saturation = Math.min(100, BASE_COLOR_SATURATION + (level * SATURATION_STEP_UP));
-                 return `hsl(${BASE_COLOR_HUE}, ${saturation}%, ${lightness}%)`;
+                console.error("Error processing parent color or calculating group color:", e);
+                // Final fallback: Use a default slightly darker color
+                return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - GROUP_LIGHTNESS_STEP_DOWN}%)`;
             }
         } else {
-             console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent. Using default.`);
-             return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
+            // This case should ideally not happen for cards in columns > 0, but handle defensively
+            console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent but is not in column 0. Using default color.`);
+            return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
         }
     }
 
@@ -911,19 +921,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         allToHighlight.forEach(id => {
             const cardEl = getCardElement(id);
-            const cardData = projectData.cards[id]; // Get data from active project
-
-            if (cardEl && cardData) {
+            if (cardEl) {
                 cardEl.classList.add('highlight');
-                let baseColor = cardData.color;
-                if (!baseColor) {
-                    baseColor = getColorForCard(cardData); // Recalculate using active project context
-                    cardData.color = baseColor; // Store the calculated color
-                }
-                const highlightBg = getHighlightColor(baseColor);
-                cardEl.style.backgroundColor = highlightBg;
             }
-
             const groupEl = getGroupElement(id);
             if (groupEl) {
                 groupEl.classList.add('highlight');
@@ -935,17 +935,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearHighlights() {
         document.querySelectorAll('.card.highlight, .card.editing, .card-group.highlight').forEach(el => {
             el.classList.remove('highlight', 'editing');
-            if (el.classList.contains('card')) {
-                const cardId = el.dataset.cardId;
-                const card = getCard(cardId); // Uses active project data
-                if(card && card.color) {
-                    el.style.backgroundColor = card.color;
-                } else if (card) {
-                    el.style.backgroundColor = getColorForCard(card); // Recalculate
-                } else {
-                    el.style.backgroundColor = ''; // Fallback
-                }
-            }
         });
     }
 

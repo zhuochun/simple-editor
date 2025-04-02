@@ -447,9 +447,9 @@ body.ai-ready .ai-feature {
 
 /* --- Highlighting --- */
 .card.highlight {
-    /* Stronger background applied via JS */
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    border-color: #999;
+    background-color: #f8f4e8 !important; /* Light paper-like color */
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-color: #d4c9a8;
 }
 .card.editing {
      border-color: #55aaff;
