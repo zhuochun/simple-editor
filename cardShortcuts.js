@@ -103,12 +103,18 @@ function handleCardTextareaKeydown(event, helpers) {
                     if (!currentCardData) return;
 
                     let siblings;
+                    let currentIndex;
                     if (currentCardData.parentId) {
                         siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                        // Go to next column card
+                        currentIndex = siblings.findIndex(c => c.id === cardId);
+                        if (currentIndex + 1 >= siblings.length) {
+                            siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                        }
                     } else {
                         siblings = helpers.getColumnCards(currentCardData.columnIndex);
                     }
-                    const currentIndex = siblings.findIndex(c => c.id === cardId);
+                    currentIndex = siblings.findIndex(c => c.id === cardId);
                     if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
                         const nextCardId = siblings[currentIndex + 1].id;
                         helpers.focusCardTextarea(nextCardId, 'start'); // Focus start of next card
@@ -118,17 +124,23 @@ function handleCardTextareaKeydown(event, helpers) {
             // === Alt+Down: Move Focus to Next Card ===
             else if (altPressed && !ctrlPressed) {
                 event.preventDefault();
-                console.log(`Shortcut: Ctrl+Down on card ${cardId}`);
+                console.log(`Shortcut: Alt+Down on card ${cardId}`);
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
 
                 let siblings;
+                let currentIndex;
                 if (currentCardData.parentId) {
                     siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                    // Go to next column card
+                    currentIndex = siblings.findIndex(c => c.id === cardId);
+                    if (currentIndex + 1 >= siblings.length) {
+                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                    }
                 } else {
                     siblings = helpers.getColumnCards(currentCardData.columnIndex);
                 }
-                const currentIndex = siblings.findIndex(c => c.id === cardId);
+                currentIndex = siblings.findIndex(c => c.id === cardId);
                 if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
                     const nextCardId = siblings[currentIndex + 1].id;
                     helpers.focusCardTextarea(nextCardId, 'preserve'); // Preserve position if possible, otherwise start
@@ -148,12 +160,18 @@ function handleCardTextareaKeydown(event, helpers) {
                     if (!currentCardData) return;
 
                     let siblings;
+                    let currentIndex;
                     if (currentCardData.parentId) {
                         siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                        // Go to prev column card
+                        currentIndex = siblings.findIndex(c => c.id === cardId);
+                        if (currentIndex <= 0) {
+                            siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                        }
                     } else {
                         siblings = helpers.getColumnCards(currentCardData.columnIndex);
                     }
-                    const currentIndex = siblings.findIndex(c => c.id === cardId);
+                    currentIndex = siblings.findIndex(c => c.id === cardId);
                     if (currentIndex > 0) {
                         const prevCardId = siblings[currentIndex - 1].id;
                         helpers.focusCardTextarea(prevCardId, 'end'); // Focus end of previous card
@@ -163,17 +181,23 @@ function handleCardTextareaKeydown(event, helpers) {
             // === Alt+Up: Move Focus to Previous Card ===
             else if (altPressed && !ctrlPressed) {
                 event.preventDefault();
-                console.log(`Shortcut: Ctrl+Up on card ${cardId}`);
+                console.log(`Shortcut: Alt+Up on card ${cardId}`);
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
 
                 let siblings;
+                let currentIndex;
                 if (currentCardData.parentId) {
                     siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                    // Go to prev column card
+                    currentIndex = siblings.findIndex(c => c.id === cardId);
+                    if (currentIndex <= 0) {
+                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                    }
                 } else {
                     siblings = helpers.getColumnCards(currentCardData.columnIndex);
                 }
-                const currentIndex = siblings.findIndex(c => c.id === cardId);
+                currentIndex = siblings.findIndex(c => c.id === cardId);
                 if (currentIndex > 0) {
                     const prevCardId = siblings[currentIndex - 1].id;
                     helpers.focusCardTextarea(prevCardId, 'preserve'); // Preserve position if possible, otherwise end

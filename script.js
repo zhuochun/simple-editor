@@ -422,12 +422,52 @@ document.addEventListener('DOMContentLoaded', () => {
         return Array.from(columnsContainer.children).indexOf(columnElement);
     }
 
-    // Helper to get root cards for the active project's column
+    // Helper to get cards for the active project's column
+    // Sorts root cards by their order, then groups child cards by parent,
+    // sorting groups by parent.order, and cards within groups by card.order.
     function getColumnCards(columnIndex) {
         const projectData = getActiveProjectData();
-        return Object.values(projectData.cards)
-               .filter(card => card.columnIndex === columnIndex && !card.parentId)
-               .sort((a, b) => a.order - b.order);
+        const allCards = projectData.cards; // Need all cards for parent lookup
+
+        return Object.values(allCards)
+               .filter(card => card.columnIndex === columnIndex)
+               .sort((a, b) => {
+                   const aIsRoot = !a.parentId;
+                   const bIsRoot = !b.parentId;
+
+                   if (aIsRoot && bIsRoot) {
+                       // Case 1: Both are root cards in this column, sort by their own order
+                       return a.order - b.order;
+                   } else if (aIsRoot) {
+                       // Case 2: a is root, b is child. Root comes first.
+                       return -1;
+                   } else if (bIsRoot) {
+                       // Case 3: a is child, b is root. Root comes first.
+                       return 1;
+                   } else {
+                       // Case 4: Both are child cards
+                       if (a.parentId === b.parentId) {
+                           // Subcase 4a: Same parent, sort by their own order
+                           return a.order - b.order;
+                       } else {
+                           // Subcase 4b: Different parents, sort by parent's order
+                           const parentA = allCards[a.parentId];
+                           const parentB = allCards[b.parentId];
+
+                           // Handle cases where parent might be missing (defensive coding)
+                           const parentAOrder = parentA ? parentA.order : Infinity; // Missing parents sort last
+                           const parentBOrder = parentB ? parentB.order : Infinity;
+
+                           if (parentAOrder !== parentBOrder) {
+                               return parentAOrder - parentBOrder;
+                           } else {
+                               // Tie-breaker: If parents somehow have the same order,
+                               // sort by the child card's order.
+                               return a.order - b.order;
+                           }
+                       }
+                   }
+               });
     }
 
     // Helper to get child cards for the active project
@@ -1373,11 +1413,11 @@ document.addEventListener('DOMContentLoaded', () => {
                  textarea.classList.add('ai-loading');
              }
              if (newCardEl) {
-                 newCardEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                 // Don't focus if AI is loading
-                 if(textarea && !initialContent.includes("AI is thinking...")) {
-                      textarea.focus();
-                 }
+                scrollIntoViewIfNeeded(newCardEl)
+                // Don't focus if AI is loading
+                if (textarea && !initialContent.includes("AI is thinking...")) {
+                    textarea.focus();
+                }
              }
         });
         console.log(`Card ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order} in project ${activeProjectId}`);
@@ -2079,7 +2119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (lastCardId && getCard(lastCardId)) { // Check if lastCardId is still valid
                     requestAnimationFrame(() => {
                         const lastEl = getCardElement(lastCardId);
-                        if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        scrollIntoViewIfNeeded(lastEl)
                     });
                 }
             }
@@ -2285,7 +2325,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (lastCardId && getCard(lastCardId)) { // Check if lastCardId is still valid
                         requestAnimationFrame(() => {
                             const lastEl = getCardElement(lastCardId);
-                            if (lastEl) lastEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            scrollIntoViewIfNeeded(lastEl)
                         });
                     }
                 }
@@ -2303,7 +2343,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scrollIntoViewIfNeeded(element) {
         if (element) {
-            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
     }
 
