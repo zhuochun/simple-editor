@@ -944,6 +944,7 @@ document.addEventListener('DOMContentLoaded', () => {
          const cardId = cardEl.dataset.cardId;
 
          cardEl.classList.add('editing');
+         scrollHierarchy(cardId);
          highlightHierarchy(cardId); // Uses active project data implicitly
     }
 
