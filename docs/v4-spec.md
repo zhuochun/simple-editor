@@ -5,8 +5,10 @@ Add key shortcuts support inside card's textarea to quickly navigate within and 
 All cards share these functions, keep the logic in a new JS file.
 
 `Ctrl+Enter`: Create a new card below, and focus to the new card's textarea.
+    - Split the content of the current card at the cursor's position and move the subsequent text to a newly created card
 
 `Alt+Enter`: Create a new child card in next column, and focus to the new card's textarea. Remember to scroll the card into view.
+    - Split the content of the current card at the cursor's position and move the subsequent text to a newly created card
 
 `Down`: When the cursor is on the last line of the textarea, pressing Down moves the focus to the beginning of the textarea in the next card in the same column, if one exists.
 

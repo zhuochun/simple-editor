@@ -37,12 +37,20 @@ function handleCardTextareaKeydown(event, helpers) {
 
     switch (event.key) {
         case 'Enter':
-            // === Ctrl+Enter: Create New Card Below ===
+            // === Ctrl+Enter: Split Card Below ===
             if (ctrlPressed) {
                 event.preventDefault();
-                console.log(`Shortcut: Ctrl+Enter on card ${cardId}`);
+                console.log(`Shortcut: Ctrl+Enter (Split Below) on card ${cardId}`);
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
+
+                const selectionStart = textarea.selectionStart;
+                const textBeforeCursor = textarea.value.substring(0, selectionStart);
+                const textAfterCursor = textarea.value.substring(selectionStart);
+
+                // Update current card content (assuming helper exists)
+                helpers.updateCardContent(cardId, textBeforeCursor);
+                // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
 
                 // Find next sibling to insert before
                 let insertBeforeCardId = null;
@@ -57,19 +65,27 @@ function handleCardTextareaKeydown(event, helpers) {
                     insertBeforeCardId = siblings[currentIndex + 1].id;
                 }
 
-                // Add card (focus/scroll is handled by addCard)
-                helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, '', insertBeforeCardId);
+                // Add new card below with the remaining text (focus/scroll is handled by addCard)
+                helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, textAfterCursor, insertBeforeCardId);
             }
-            // === Alt+Enter: Create New Child Card ===
+            // === Alt+Enter: Split Card as Child ===
             else if (altPressed) {
                 event.preventDefault();
-                console.log(`Shortcut: Alt+Enter on card ${cardId}`);
+                console.log(`Shortcut: Alt+Enter (Split Child) on card ${cardId}`);
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
 
+                const selectionStart = textarea.selectionStart;
+                const textBeforeCursor = textarea.value.substring(0, selectionStart);
+                const textAfterCursor = textarea.value.substring(selectionStart);
+
+                 // Update current card content (assuming helper exists)
+                helpers.updateCardContent(cardId, textBeforeCursor);
+                 // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
+
                 const targetColumnIndex = currentCardData.columnIndex + 1;
-                // Add card as child in next column (focus/scroll is handled by addCard)
-                helpers.addCard(targetColumnIndex, cardId, '');
+                // Add new card as child with the remaining text (focus/scroll is handled by addCard)
+                helpers.addCard(targetColumnIndex, cardId, textAfterCursor);
             }
             break;
 

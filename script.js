@@ -2362,6 +2362,30 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log(`Focused card ${cardId}, position: ${position}`);
     }
 
+    // Helper function to update card content (used by shortcuts)
+    function updateCardContent(cardId, newContent) {
+        const projectData = getActiveProjectData();
+        const card = projectData.cards[cardId];
+        if (card) {
+            if (card.content !== newContent) {
+                card.content = newContent;
+                updateProjectLastModified();
+                saveProjectsData();
+                console.log(`Card ${cardId} content updated via shortcut helper.`);
+
+                // Also update the textarea value directly if the element exists
+                const cardEl = getCardElement(cardId);
+                const textarea = cardEl?.querySelector('textarea.card-content');
+                if (textarea) {
+                    textarea.value = newContent;
+                    autoResizeTextarea({ target: textarea }); // Adjust height if needed
+                }
+            }
+        } else {
+            console.warn(`updateCardContent: Card ${cardId} not found in active project.`);
+        }
+    }
+
 
     // --- Initial Load ---
     // Initialize AI Settings UI and logic from aiService
@@ -2388,6 +2412,7 @@ document.addEventListener('DOMContentLoaded', () => {
         getCardElement: getCardElement, // Function from main.js
         getColumnCards: getColumnCards, // Function from main.js
         getChildCards: getChildCards, // Function from main.js
+        updateCardContent: updateCardContent, // Newly added helper
     };
 
     // Attach the single keydown listener using event delegation
