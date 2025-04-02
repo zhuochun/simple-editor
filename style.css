@@ -5,10 +5,17 @@
     --min-sidebar-width: 150px;
     --header-height: 44px; /* Column toolbar height + padding */
     --card-header-height: 29px; /* Card header height + padding */
+
+    font-family: Inter, sans-serif; /* https://rsms.me/inter/ */
+    font-feature-settings: 'liga' 1, 'calt' 1; /* fix for Chrome */
+    line-height: 1.6; /* Improved readability */
+}
+
+@supports (font-variation-settings: normal) {
+  :root { font-family: InterVariable, sans-serif; }
 }
 
 body {
-    font-family: sans-serif;
     margin: 0;
     background-color: #f0f0f0;
     height: 100dvh; /* Use dynamic viewport height */
@@ -238,7 +245,7 @@ body {
 .column {
     background-color: #e0e0e0;
     border-radius: 5px;
-    width: 450px;
+    width: 50ch;
     flex-shrink: 0; /* Prevent columns from shrinking */
     height: 100%; /* Take full height of columns-container */
     display: flex;
@@ -393,13 +400,15 @@ body.ai-ready .ai-feature {
     resize: vertical;
     font-family: inherit;
     font-size: 0.95em;
+    color: #222;
+    line-height: 1.6; /* Improved readability */
     display: block;
     box-sizing: border-box;
     background-color: transparent; /* Inherit card background */
 }
 .card-content.ai-loading {
     font-style: italic;
-    color: #888;
+    color: #999;
 }
 
 
@@ -447,7 +456,7 @@ body.ai-ready .ai-feature {
 
 /* --- Highlighting --- */
 .card.highlight {
-    background-color: #f8f4e8 !important; /* Light paper-like color */
+    background-color: #f8f8f8 !important; /* Light paper-like color */
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     border-color: #d4c9a8;
 }
