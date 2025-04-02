@@ -971,6 +971,85 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /**
+     * Scrolls the hierarchy related to a given card ID.
+     * - Centers the focused card.
+     * - Centers all ancestor cards in their respective containers.
+     * - Scrolls descendant groups (top if taller than viewport, center otherwise).
+     * @param {string} cardId - The ID of the card initiating the scroll.
+     */
+    function scrollHierarchy(cardId) {
+        const cardEl = getCardElement(cardId);
+        if (!cardEl) return;
+
+        const scrolledContainers = new Set(); // Track containers already scrolled
+
+        // Helper to perform scroll if container hasn't been scrolled yet
+        const scrollToTarget = (container, targetElement, center = true, scrollToTopIfTaller = false) => {
+            if (!container || !targetElement || scrolledContainers.has(container)) {
+                return; // Skip if no container, target, or already scrolled
+            }
+
+            const containerRect = container.getBoundingClientRect();
+            const elementRect = targetElement.getBoundingClientRect();
+
+            // Calculate element's position relative to the container
+            const relativeElementTop = elementRect.top - containerRect.top + container.scrollTop;
+            const relativeElementHeight = elementRect.height;
+            const containerHeight = container.clientHeight; // Use clientHeight for visible height
+
+            let targetScroll;
+
+            if (scrollToTopIfTaller && relativeElementHeight > window.innerHeight) {
+                targetScroll = relativeElementTop;
+            } else if (center) {
+                targetScroll = relativeElementTop - (containerHeight / 2) + (relativeElementHeight / 2);
+            } else {
+                targetScroll = relativeElementTop;
+            }
+
+            container.scrollTo({
+                top: Math.max(0, targetScroll), // Ensure scroll isn't negative
+                behavior: 'smooth'
+            });
+            scrolledContainers.add(container); // Mark as scrolled
+        };
+
+        // 1. Scroll Focused Card
+        const focusedScrollContainer = cardEl.closest('.column')?.querySelector('.cards-container');
+        scrollToTarget(focusedScrollContainer, cardEl, true); // Center focused card
+
+        // 2. Scroll Ancestors
+        const ancestorIds = getAncestorIds(cardId);
+        ancestorIds.forEach(ancestorId => {
+            const ancestorEl = getCardElement(ancestorId);
+            if (ancestorEl) {
+                const ancestorScrollContainer = ancestorEl.closest('.column')?.querySelector('.cards-container');
+                scrollToTarget(ancestorScrollContainer, ancestorEl, true); // Center ancestor
+            }
+        });
+
+        // 3. Scroll Descendant Groups
+        const descendantIds = getDescendantIds(cardId);
+        const allIdsToCheckForGroups = [cardId, ...descendantIds]; // Include the focused card itself
+
+        allIdsToCheckForGroups.forEach(currentId => {
+            const currentCard = getCard(currentId);
+            if (!currentCard) return;
+
+            // Check if this card has children in the *next* column
+            const childrenInNextCol = getChildCards(currentId, currentCard.columnIndex + 1);
+            if (childrenInNextCol.length > 0) {
+                const groupEl = getGroupElement(currentId); // Get the group element in the next column
+                if (groupEl) {
+                    const groupScrollContainer = groupEl.closest('.column')?.querySelector('.cards-container');
+                    // Scroll the group: top if taller than viewport, center otherwise
+                    scrollToTarget(groupScrollContainer, groupEl, true, true);
+                }
+            }
+        });
+    }
+
     // REVISED: clearHighlights - Uses active project data
     function clearHighlights() {
         document.querySelectorAll('.card.highlight, .card.editing, .card-group.highlight').forEach(el => {
@@ -2365,28 +2444,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Ensure textarea is visible and interactable before focusing
-        // (May need more robust checks depending on CSS transitions/visibility)
         textarea.style.display = ''; // Ensure it's not display: none
 
         textarea.focus(); // Focus the element first
 
         // Set selection based on position after focus
         requestAnimationFrame(() => { // Use rAF to ensure focus is applied
-             try {
-                 if (position === 'start') {
-                     textarea.setSelectionRange(0, 0);
-                 } else if (position === 'end') {
-                     const len = textarea.value.length;
-                     textarea.setSelectionRange(len, len);
-                 } else {
-                     // 'preserve' - Do nothing, keep existing selection/cursor position
-                     // If focusing from non-input, it usually defaults to start, which is okay.
-                 }
-             } catch (e) {
-                 console.error(`Error setting selection range for card ${cardId}:`, e);
-             }
-             scrollIntoViewIfNeeded(cardEl); // Scroll after focusing and setting position
-             highlightHierarchy(cardId); // Also highlight the hierarchy when focusing via shortcut
+            try {
+                if (position === 'start') {
+                    textarea.setSelectionRange(0, 0);
+                } else if (position === 'end') {
+                    const len = textarea.value.length;
+                    textarea.setSelectionRange(len, len);
+                } else {
+                    // 'preserve' - Do nothing, keep existing selection/cursor position
+                    // If focusing from non-input, it usually defaults to start, which is okay.
+                }
+            } catch (e) {
+                console.error(`Error setting selection range for card ${cardId}:`, e);
+            }
+            scrollHierarchy(cardId);
+            highlightHierarchy(cardId); // Also highlight the hierarchy when focusing via shortcut
         });
         console.log(`Focused card ${cardId}, position: ${position}`);
     }
