@@ -302,9 +302,15 @@ body.ai-ready .ai-feature {
 .cards-container {
     flex-grow: 1; /* Take remaining space in column */
     overflow-y: auto; /* Enable vertical scrolling for cards */
-    padding: 10px;
+    padding: 19vh 10px; /* Add significant top/bottom padding */
     min-height: 50px; /* Ensure drop zone exists */
     position: relative; /* For drag-over indicators */
+    box-sizing: border-box; /* Include padding in element's height */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE/Edge */
+}
+.cards-container::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
 }
 
 /* --- Card Styling --- */
