@@ -26,20 +26,19 @@ body {
 #sidebar {
     width: var(--sidebar-width);
     min-width: var(--min-sidebar-width);
-    background-color: #dde1e6;
-    border-right: 1px solid #ccc;
+    background-color: #e9ecef;
     display: flex;
     flex-direction: column;
     height: 100%;
     flex-shrink: 0;
     overflow: hidden; /* Prevent content overflow */
     box-sizing: border-box;
-    transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease, border 0.3s ease; /* Added transition */
+    transition: width 0.2s ease, min-width 0.2s ease, padding 0.2s ease, border 0.2s ease; /* Added transition */
 }
 
 #resizer {
     width: var(--resizer-width);
-    background-color: #c0c0c0;
+    background-color: #dee2e6;
     cursor: pointer; /* Change cursor to pointer for clicking */
     height: 100%;
     flex-shrink: 0;
@@ -259,7 +258,7 @@ body.sidebar-collapsed #resizer {
 /* --- Existing Column & Card Styles (mostly unchanged) --- */
 
 .column {
-    background-color: #e0e0e0;
+    background-color: #e9ecef;
     border-radius: 5px;
     width: 50ch;
     flex-shrink: 0; /* Prevent columns from shrinking */
@@ -273,10 +272,10 @@ body.sidebar-collapsed #resizer {
 .column-toolbar {
     position: sticky;
     top: 0;
-    background-color: #d0d0d0;
+    background-color: #e9ecef;
     padding: 8px;
     height: 28px; /* Fixed height for calculation */
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid #dee2e6;
     z-index: 10;
     display: flex;
     justify-content: space-between; /* Align buttons */
