@@ -1974,30 +1974,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Sidebar Resizer ---
-    let isResizing = false;
-    resizer.addEventListener('mousedown', (e) => {
-        isResizing = true;
-        document.body.style.cursor = 'ew-resize'; // Indicate resizing across the body
-        document.body.style.userSelect = 'none'; // Prevent text selection during resize
-    });
+    // --- Sidebar Collapser ---
+    const SIDEBAR_COLLAPSED_KEY = 'sidebarCollapsed';
 
-    document.addEventListener('mousemove', (e) => {
-        if (!isResizing) return;
-        const minWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--min-sidebar-width'), 10) || 150;
-        let newWidth = e.clientX;
-        // Clamp width to minimum and reasonable maximum (e.g., half the window width)
-        newWidth = Math.max(minWidth, newWidth);
-        newWidth = Math.min(newWidth, window.innerWidth / 2);
-        document.documentElement.style.setProperty('--sidebar-width', `${newWidth}px`);
-    });
-
-    document.addEventListener('mouseup', () => {
-        if (isResizing) {
-            isResizing = false;
-            document.body.style.cursor = 'default';
-            document.body.style.userSelect = 'auto';
-        }
+    resizer.addEventListener('click', () => {
+        const isCollapsed = document.body.classList.toggle('sidebar-collapsed');
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed); // Save state
     });
 
     // --- AI Action Handlers ---
@@ -2510,6 +2492,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Add Project Button Listener
     addProjectBtn.addEventListener('click', addProject);
+
+    // --- Load Initial Sidebar State ---
+    const savedSidebarState = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+    if (savedSidebarState === 'true') {
+        document.body.classList.add('sidebar-collapsed');
+    }
 
     // --- Keyboard Shortcut Integration ---
     // Define the helpers object to pass to the shortcut handler

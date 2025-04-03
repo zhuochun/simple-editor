@@ -34,19 +34,34 @@ body {
     flex-shrink: 0;
     overflow: hidden; /* Prevent content overflow */
     box-sizing: border-box;
+    transition: width 0.3s ease, min-width 0.3s ease, padding 0.3s ease, border 0.3s ease; /* Added transition */
 }
 
 #resizer {
     width: var(--resizer-width);
     background-color: #c0c0c0;
-    cursor: ew-resize;
+    cursor: pointer; /* Change cursor to pointer for clicking */
     height: 100%;
     flex-shrink: 0;
+    transition: background-color 0.2s ease; /* Add transition */
 }
 #resizer:hover {
     background-color: #aaa;
 }
 
+/* --- Sidebar Collapsed State --- */
+body.sidebar-collapsed #sidebar {
+    width: 0;
+    min-width: 0;
+    border-right-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    overflow: hidden; /* Ensure content is hidden */
+}
+
+body.sidebar-collapsed #resizer {
+    width: 9px;
+}
 
 #main-content {
     flex-grow: 1;
@@ -54,6 +69,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden; /* Contain app scrolling */
+    transition: margin-left 0.3s ease; /* Added transition for main content shift */
 }
 
 #app {
@@ -302,7 +318,7 @@ body.ai-ready .ai-feature {
 .cards-container {
     flex-grow: 1; /* Take remaining space in column */
     overflow-y: auto; /* Enable vertical scrolling for cards */
-    padding: 19vh 10px; /* Add significant top/bottom padding */
+    padding: 19vh 10px 40vh; /* Add significant top/bottom padding */
     min-height: 50px; /* Ensure drop zone exists */
     position: relative; /* For drag-over indicators */
     box-sizing: border-box; /* Include padding in element's height */
