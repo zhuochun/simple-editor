@@ -1867,6 +1867,17 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal(); // Close modal after processing
         });
 
+        // Allow submitting with Ctrl+Enter in textarea
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                e.preventDefault(); // Prevent newline
+                submitButton.click(); // Trigger submit
+            } else if (e.key === 'Escape') {
+                 e.preventDefault();
+                 closeModal(); // Close on Escape
+            }
+        });
+
          // Close if clicking outside the modal content
          overlay.addEventListener('click', (e) => {
              if (e.target === overlay) {
@@ -2516,12 +2527,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
-         // Close if clicking outside the modal content
-         overlay.addEventListener('click', (e) => {
-             if (e.target === overlay) {
-                 closeModal();
-             }
-         });
+
+        // Allow submitting with Enter in textarea
+        promptInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+                e.preventDefault(); // Prevent newline
+                submitButton.click(); // Trigger submit
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeModal(); // Close on Escape
+            }
+        })
+
+        // Close if clicking outside the modal content
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                closeModal();
+            }
+        });
     }
 
     // --- Keyboard Navigation Helpers ---
