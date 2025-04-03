@@ -234,6 +234,87 @@ function handleCardTextareaKeydown(event, helpers) {
                 }
             }
             break;
+
+        // === Backspace: Merge with Previous Card (if at start) ===
+        case 'Backspace':
+            if (!ctrlPressed && !altPressed && textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
+                event.preventDefault();
+                console.log(`Shortcut: Backspace (start) on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                let siblings;
+                let currentIndex;
+                if (currentCardData.parentId) {
+                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                } else {
+                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                }
+                currentIndex = siblings.findIndex(c => c.id === cardId);
+
+                if (currentIndex > 0) {
+                    const prevCardId = siblings[currentIndex - 1].id;
+                    const prevCardData = helpers.getCard(prevCardId);
+                    if (!prevCardData) return;
+
+                    const currentContent = textarea.value;
+                    const prevContent = prevCardData.content || ''; // Handle potentially undefined content
+                    const mergedContent = prevContent + currentContent;
+                    // Position cursor at the point of merge in the previous card
+                    const newCursorPos = prevContent.length;
+
+                    // 1. Update previous card content
+                    helpers.updateCardContent(prevCardId, mergedContent);
+                    // 2. Reparent children of current card to previous card
+                    helpers.reparentChildren(cardId, prevCardId);
+                    // 3. Delete *only* the current card (data and DOM)
+                    helpers.deleteCardInternal(cardId); // Use internal delete
+                    // 4. Focus previous card at the merge point
+                    helpers.focusCardTextarea(prevCardId, newCursorPos);
+                    // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
+                }
+            }
+            break;
+
+        // === Delete: Merge with Next Card (if at end) ===
+        case 'Delete':
+            if (!ctrlPressed && !altPressed && textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length) {
+                event.preventDefault();
+                console.log(`Shortcut: Delete (end) on card ${cardId}`);
+                const currentCardData = helpers.getCard(cardId);
+                if (!currentCardData) return;
+
+                let siblings;
+                let currentIndex;
+                 if (currentCardData.parentId) {
+                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+                } else {
+                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
+                }
+                currentIndex = siblings.findIndex(c => c.id === cardId);
+
+                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                    const nextCardId = siblings[currentIndex + 1].id;
+                    const nextCardData = helpers.getCard(nextCardId);
+                    if (!nextCardData) return;
+
+                    const currentContent = textarea.value;
+                    const nextContent = nextCardData.content || ''; // Handle potentially undefined content
+                    const mergedContent = currentContent + nextContent;
+                    const currentCursorPos = currentContent.length; // Cursor stays at the end of the original content
+
+                    // 1. Update current card content
+                    helpers.updateCardContent(cardId, mergedContent);
+                    // 2. Reparent children of next card to current card
+                    helpers.reparentChildren(nextCardId, cardId);
+                    // 3. Delete *only* the next card (data and DOM)
+                    helpers.deleteCardInternal(nextCardId); // Use internal delete
+                    // 4. Focus current card at the merge point
+                    helpers.focusCardTextarea(cardId, currentCursorPos);
+                     // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
+                }
+            }
+            break;
     }
 }
 

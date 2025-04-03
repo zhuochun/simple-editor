@@ -1594,97 +1594,220 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
-    // REVISED: deleteCard - Operates on active project, updates lastModified, saves all
-    function deleteCard(cardId) {
+    /**
+     * Internal helper to delete a single card's data and optionally its DOM element.
+     * Does NOT handle descendants or confirmation.
+     * @param {string} cardId The ID of the card to delete.
+     * @param {boolean} [updateDOM=true] Whether to remove the card's DOM element.
+     * @returns {object | null} The data of the deleted card, or null if not found.
+     */
+    function deleteCardInternal(cardId, updateDOM = true) {
         const projectData = getActiveProjectData();
-        const card = projectData.cards[cardId];
-        if (!card) return;
+        const cardData = projectData.cards[cardId];
+        if (!cardData) {
+            console.warn(`deleteCardInternal: Card ${cardId} not found.`);
+            return null;
+        }
 
-        const descendantIds = getDescendantIds(cardId); // Uses active project data
-        const descendantCardsWithContent = descendantIds.filter(id => {
-            const descCard = projectData.cards[id];
-            return descCard && descCard.content?.trim() !== '';
-        });
-        const allIdsToDelete = [cardId, ...descendantIds];
-        const numDescendants = descendantCardsWithContent.length;
-        const wasRoot = !card.parentId && card.columnIndex === 0;
-        const hasContent = card.content?.trim() !== ''; // Check if content exists (trimmed)
+        // Delete data
+        delete projectData.cards[cardId];
 
-        // Skip confirmation if card has no descendants with content
-        const shouldConfirm = numDescendants > 0;
-
-        if (shouldConfirm) {
-            if (!confirm(`Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${numDescendants} descendant(s) from project "${projects[activeProjectId].title}"?`)) {
-                return;
+        // Optionally delete DOM
+        if (updateDOM) {
+            const cardEl = getCardElement(cardId);
+            if (cardEl) {
+                cardEl.remove();
+                console.log(`deleteCardInternal: Removed DOM for ${cardId}`);
+            } else {
+                 console.warn(`deleteCardInternal: DOM element not found for ${cardId} during removal.`);
             }
         }
-        // Proceed with deletion if confirmed OR if skipping confirmation
+        console.log(`deleteCardInternal: Deleted data for ${cardId}`);
+        return cardData; // Return the data in case it's needed
+    }
 
+
+    // REVISED: deleteCard - Handles confirmation, deletes card and descendants, updates UI.
+    function deleteCard(cardId) {
+        const projectData = getActiveProjectData();
+        const card = projectData.cards[cardId]; // Check if card exists before proceeding
+        if (!card) {
+             console.warn(`deleteCard: Card ${cardId} not found.`);
+             return;
+        }
+
+        const descendantIds = getDescendantIds(cardId); // Uses active project data
+        const allIdsToDelete = [cardId, ...descendantIds];
+        const numDescendantsWithContent = descendantIds.filter(id => projectData.cards[id]?.content?.trim()).length;
+        const wasRoot = !card.parentId && card.columnIndex === 0;
+        const hasContent = card.content?.trim() !== '';
+
+        // Confirmation logic
+        const shouldConfirm = numDescendantsWithContent > 0 || (hasContent && descendantIds.length > 0); // Confirm if descendants have content OR if parent has content and there are any descendants
+        const confirmMessage = `Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${descendantIds.length} descendant(s) (${numDescendantsWithContent} with content) from project "${projects[activeProjectId].title}"?`;
+
+        if (shouldConfirm && !confirm(confirmMessage)) {
+            return; // User cancelled
+        }
+
+        // Proceed with deletion
         const affectedColumns = new Set();
         affectedColumns.add(card.columnIndex);
         const originalParentId = card.parentId;
+        let rootColorsNeedUpdate = wasRoot;
 
-        allIdsToDelete.forEach(id => {
-            const c = projectData.cards[id];
-            if (c) {
-                 affectedColumns.add(c.columnIndex);
-                 // Add next column index if descendants might be there
-                 if (projectData.columns.length > c.columnIndex + 1) {
-                     affectedColumns.add(c.columnIndex + 1);
-                 }
-                 delete projectData.cards[id]; // Delete from active project data
+        // Delete data and DOM for all descendants first, then the card itself
+        descendantIds.forEach(id => {
+            const descCardData = deleteCardInternal(id, true); // Delete data and DOM
+            if (descCardData) {
+                affectedColumns.add(descCardData.columnIndex);
+                // Add next column index if descendants might be there
+                if (projectData.columns.length > descCardData.columnIndex + 1) {
+                    affectedColumns.add(descCardData.columnIndex + 1);
+                }
             }
         });
+        // Finally, delete the main card
+        deleteCardInternal(cardId, true); // Delete data and DOM
 
-         let rootColorsNeedUpdate = wasRoot;
-
-         // --- DOM Deletion ---
-         allIdsToDelete.forEach(id => {
-             const cardEl = getCardElement(id);
-             if (cardEl) cardEl.remove();
-             // Also remove group if it becomes empty (check needed after card removal)
-         });
-         // Remove empty group container if the deleted card was the last child
-         if (originalParentId) {
-            const children = getChildCards(originalParentId, card.columnIndex);
-            if (children.length === 0) {
+        // Remove empty group container if the deleted card was the last child in its original group
+        if (originalParentId) {
+            const remainingChildren = getChildCards(originalParentId, card.columnIndex); // Check remaining children in the original column
+            if (remainingChildren.length === 0) {
                 const groupEl = getGroupElement(originalParentId);
                 if (groupEl) groupEl.remove();
             }
-         }
+        }
 
+        // Re-render affected columns that *still exist* to update layout/groups etc.
+        const validColumnsToRender = Array.from(affectedColumns)
+            .filter(idx => idx >= 0 && idx < projectData.columns.length) // Ensure column index is valid
+            .sort((a, b) => a - b);
 
-         // Re-render affected columns that *still exist* to update layout/groups etc.
-         Array.from(affectedColumns).sort((a,b)=>a-b).forEach(colIndex => {
-             if(colIndex < projectData.columns.length) { // Check if column index is valid
-                 const colEl = getColumnElementByIndex(colIndex);
-                 if (colEl) {
-                      // If the column itself wasn't deleted, re-render its content
-                      renderColumnContent(colEl, colIndex);
-                 }
-             }
-         });
+        validColumnsToRender.forEach(colIndex => {
+            const colEl = getColumnElementByIndex(colIndex);
+            if (colEl) {
+                renderColumnContent(colEl, colIndex);
+            }
+        });
 
         // Now, if needed, update root colors and re-render column 0
         if (rootColorsNeedUpdate) {
-             const rootCards = getColumnCards(0); // Gets current roots from active project
-             let updated = false;
-             rootCards.forEach(rc => {
-                  const newColor = getColorForCard(rc);
-                  if (rc.color !== newColor) { rc.color = newColor; updated = true; }
-             });
-             if (updated) {
-                  const col0El = getColumnElementByIndex(0);
-                  if (col0El) renderColumnContent(col0El, 0);
-             }
+            const rootCards = getColumnCards(0); // Gets current roots from active project
+            let updated = false;
+            rootCards.forEach(rc => {
+                const newColor = getColorForCard(rc);
+                if (rc.color !== newColor) { rc.color = newColor; updated = true; }
+            });
+            if (updated && !validColumnsToRender.includes(0)) { // Only add if not already there
+                 validColumnsToRender.push(0);
+                 validColumnsToRender.sort((a,b) => a - b);
+            }
+            // Re-render column 0 if colors changed OR if it was already in the list
+            if (updated || validColumnsToRender.includes(0)) {
+                 const col0El = getColumnElementByIndex(0);
+                 if (col0El) renderColumnContent(col0El, 0);
+            }
         }
 
         updateAllToolbarButtons(); // Update based on new state of active project
         updateProjectLastModified();
         saveProjectsData(); // Save changes
-        console.log(`Card ${cardId} and ${numDescendants} descendants deleted from project ${activeProjectId}.`);
+        console.log(`Card ${cardId} and ${descendantIds.length} descendants deleted from project ${activeProjectId}.`);
     }
+
+    /**
+     * Reparents all direct children of one card to another, updating columns, order, and colors.
+     * Handles data update, saving, and triggers necessary re-renders.
+     * @param {string} oldParentId The ID of the card whose children will be moved.
+     * @param {string} newParentId The ID of the card that will become the new parent.
+     */
+    function reparentChildren(oldParentId, newParentId) {
+        const projectData = getActiveProjectData();
+        const oldParentCard = projectData.cards[oldParentId]; // Needed for original column context if children move columns
+        const newParentCard = projectData.cards[newParentId];
+
+        if (!oldParentCard || !newParentCard) {
+            console.error(`reparentChildren: Old parent ${oldParentId} or new parent ${newParentId} not found.`);
+            return;
+        }
+
+        const childrenToMove = Object.values(projectData.cards).filter(c => c.parentId === oldParentId);
+        if (childrenToMove.length === 0) {
+            console.log(`reparentChildren: No children found for ${oldParentId}.`);
+            return; // Nothing to do
+        }
+
+        console.log(`reparentChildren: Moving ${childrenToMove.length} children from ${oldParentId} to ${newParentId}`);
+
+        const affectedColumns = new Set();
+        affectedColumns.add(newParentCard.columnIndex + 1); // Column where new group header might appear/change
+        childrenToMove.forEach(child => affectedColumns.add(child.columnIndex)); // Original columns of children
+
+        // Sort children by original order before processing
+        childrenToMove.sort((a, b) => a.order - b.order);
+
+        // Find the order of the last existing child of the new parent *in the target column*
+        // Note: Children being moved might end up in different columns relative to the new parent.
+        // We need to calculate order based on the *child's target column*.
+        const lastChildOrders = {}; // Store last order per column for the new parent
+
+        childrenToMove.forEach(child => {
+            const targetChildColumnIndex = child.columnIndex; // Children keep their column index relative to parent
+            affectedColumns.add(targetChildColumnIndex); // Ensure child's column is re-rendered
+
+            // Find last order of existing children of the *new parent* in the *child's target column*
+            if (lastChildOrders[targetChildColumnIndex] === undefined) {
+                 const existingSiblingsInTargetCol = getChildCards(newParentId, targetChildColumnIndex);
+                 lastChildOrders[targetChildColumnIndex] = existingSiblingsInTargetCol.length > 0
+                     ? Math.max(...existingSiblingsInTargetCol.map(c => c.order))
+                     : -1; // Use -1 if no existing children in that column yet
+            }
+
+            // Update child properties
+            child.parentId = newParentId;
+            // child.columnIndex remains the same (relative position)
+
+            // Calculate new order - append after the last known child in that column for the new parent
+            lastChildOrders[targetChildColumnIndex] += 1; // Increment order for the next child in this column
+            child.order = lastChildOrders[targetChildColumnIndex];
+
+            // Recalculate color based on new parentage and position
+            child.color = getColorForCard(child);
+
+            // Recursively update descendants' colors as their ancestor chain changed
+            const descendants = getDescendantIds(child.id);
+            descendants.forEach(descId => {
+                const descCard = projectData.cards[descId];
+                if (descCard) {
+                    descCard.color = getColorForCard(descCard);
+                    affectedColumns.add(descCard.columnIndex); // Ensure descendant columns are also re-rendered
+                }
+            });
+        });
+
+        // --- Save and Re-render ---
+        updateProjectLastModified();
+        saveProjectsData();
+
+        // Re-render all affected columns
+        const validColumnsToRender = Array.from(affectedColumns)
+            .filter(idx => idx >= 0 && idx < projectData.columns.length)
+            .sort((a, b) => a - b);
+
+        console.log("reparentChildren: Re-rendering columns:", validColumnsToRender);
+        validColumnsToRender.forEach(index => {
+            const colEl = getColumnElementByIndex(index);
+            if (colEl) {
+                renderColumnContent(colEl, index);
+            } else {
+                 console.warn(`reparentChildren: Attempted to re-render non-existent column DOM element at index ${index}`);
+            }
+        });
+
+        updateAllToolbarButtons(); // Update toolbars as content might have moved
+    }
+
 
     // --- Column Prompt Handling ---
     function handleSetColumnPrompt(columnIndex) {
@@ -2412,7 +2535,7 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * Finds a card's textarea, focuses it, sets cursor position, and scrolls into view.
      * @param {string} cardId - The ID of the card to focus.
-     * @param {'start' | 'end' | 'preserve'} [position='preserve'] - Where to place the cursor.
+     * @param {'start' | 'end' | 'preserve' | number} [position='preserve'] - Where to place the cursor ('start', 'end', 'preserve', or a specific index).
      */
     function focusCardTextarea(cardId, position = 'preserve') {
         const cardEl = getCardElement(cardId);
@@ -2434,15 +2557,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set selection based on position after focus
         requestAnimationFrame(() => { // Use rAF to ensure focus is applied
             try {
-                if (position === 'start') {
+                 if (typeof position === 'number') {
+                     const pos = Math.max(0, Math.min(textarea.value.length, position)); // Clamp position
+                     textarea.setSelectionRange(pos, pos);
+                 } else if (position === 'start') {
                     textarea.setSelectionRange(0, 0);
                 } else if (position === 'end') {
                     const len = textarea.value.length;
                     textarea.setSelectionRange(len, len);
-                } else {
-                    // 'preserve' - Do nothing, keep existing selection/cursor position
-                    // If focusing from non-input, it usually defaults to start, which is okay.
                 }
+                // else 'preserve' - Do nothing, keep existing selection/cursor position
             } catch (e) {
                 console.error(`Error setting selection range for card ${cardId}:`, e);
             }
@@ -2502,13 +2626,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Keyboard Shortcut Integration ---
     // Define the helpers object to pass to the shortcut handler
     const shortcutHelpers = {
-        getCard: getCard, // Function from main.js
-        addCard: addCard, // Function from main.js
-        focusCardTextarea: focusCardTextarea, // Newly added helper
-        getCardElement: getCardElement, // Function from main.js
-        getColumnCards: getColumnCards, // Function from main.js
-        getChildCards: getChildCards, // Function from main.js
-        updateCardContent: updateCardContent, // Newly added helper
+        getCard: getCard,
+        addCard: addCard,
+        deleteCard: deleteCard, // Keep the main one for standard deletion
+        deleteCardInternal: deleteCardInternal, // For merge operations
+        reparentChildren: reparentChildren, // For merge operations
+        focusCardTextarea: focusCardTextarea,
+        getCardElement: getCardElement,
+        getColumnCards: getColumnCards,
+        getChildCards: getChildCards,
+        updateCardContent: updateCardContent,
+        // Maybe add a function to trigger re-render of specific columns if needed?
+        // rerenderColumns: (columnIndices) => { /* ... */ }
     };
 
     // Attach the single keydown listener using event delegation
