@@ -28,6 +28,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const PROJECTS_STORAGE_KEY = 'writingToolProjects';
     const ACTIVE_PROJECT_ID_KEY = 'writingToolActiveProjectId';
 
+    // Limits & Placeholders
+    const CARD_NAME_MAX_LENGTH = 50;
+    const AI_PLACEHOLDER_TEXT = "AI is thinking...";
+    const AI_RESPONSE_SEPARATOR = '---';
+
 
     // --- AI Settings Management (Delegated to aiService.js) ---
 
@@ -565,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Display name or ID
         const displayName = card.name ? card.name : `#${card.id.slice(-4)}`;
-        const truncatedDisplayName = displayName.length > 50 ? displayName.substring(0, 50) + '...' : displayName;
+        const truncatedDisplayName = displayName.length > CARD_NAME_MAX_LENGTH ? displayName.substring(0, CARD_NAME_MAX_LENGTH) + '...' : displayName;
 
         // Check AI readiness for button state (using aiService)
         const aiReady = aiService.areAiSettingsValid();
@@ -639,7 +644,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (parentCard.name) {
             // Parent has a name: Use the name
-            const truncatedParentName = parentCard.name.length > 50 ? parentCard.name.substring(0, 50) + '...' : parentCard.name;
+            const truncatedParentName = parentCard.name.length > CARD_NAME_MAX_LENGTH ? parentCard.name.substring(0, CARD_NAME_MAX_LENGTH) + '...' : parentCard.name;
             groupHeaderText = `>> ${truncatedParentName}`;
             groupHeaderTitle = `Children of ${parentCard.name}`;
          } else {
@@ -1452,13 +1457,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         requestAnimationFrame(() => {
             const textarea = newCardEl.querySelector('.card-content');
-             if (textarea && initialContent.includes("AI is thinking...")) {
+             if (textarea && initialContent.includes(AI_PLACEHOLDER_TEXT)) {
                  textarea.classList.add('ai-loading');
              }
              if (newCardEl) {
                 scrollIntoViewIfNeeded(newCardEl)
                 // Don't focus if AI is loading
-                if (textarea && !initialContent.includes("AI is thinking...")) {
+                if (textarea && !initialContent.includes(AI_PLACEHOLDER_TEXT)) {
                     textarea.focus();
                 }
              }
@@ -1481,7 +1486,7 @@ document.addEventListener('DOMContentLoaded', () => {
         input.type = 'text';
         input.value = currentName;
         input.className = 'card-name-input';
-        input.maxLength = 50;
+        input.maxLength = CARD_NAME_MAX_LENGTH;
         input.placeholder = `#${cardId.slice(-4)}`; // Show ID as placeholder
 
         nameDisplaySpan.style.display = 'none'; // Hide the span
@@ -1502,7 +1507,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const finishEditing = (saveChanges) => {
             const newNameRaw = input.value;
             // Treat empty string as clearing the name (will display ID)
-            const newName = newNameRaw.trim() === '' ? null : newNameRaw.trim().substring(0, 50);
+            const newName = newNameRaw.trim() === '' ? null : newNameRaw.trim().substring(0, CARD_NAME_MAX_LENGTH);
 
             if (saveChanges && newName !== card.name) {
                 card.name = newName;
@@ -1525,7 +1530,7 @@ document.addEventListener('DOMContentLoaded', () => {
                      let groupHeaderText = '';
                      let groupHeaderTitle = '';
                      if (card.name) { // Use name if it exists now
-                         const truncatedParentName = card.name.length > 50 ? card.name.substring(0, 50) + '...' : card.name;
+                         const truncatedParentName = card.name.length > CARD_NAME_MAX_LENGTH ? card.name.substring(0, CARD_NAME_MAX_LENGTH) + '...' : card.name;
                          groupHeaderText = `>> ${truncatedParentName}`;
                          groupHeaderTitle = `Children of ${card.name}`;
                      } else { // Otherwise use ID + Content Preview
@@ -2136,7 +2141,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const { contextText, columnPrompt } = getCardContextForContinue(cardId);
 
         // Create placeholder card *after* the current card
-        const placeholderContent = "AI is thinking...";
+        const placeholderContent = AI_PLACEHOLDER_TEXT;
         // Find the next sibling ID to insert before
         let insertBeforeId = null;
         let siblings;
@@ -2163,7 +2168,7 @@ document.addEventListener('DOMContentLoaded', () => {
             contextText,
             columnPrompt,
             onChunk: (delta) => {
-                if (newTextarea.value === placeholderContent) {
+                if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = ''; // Clear placeholder on first chunk
                     newTextarea.classList.remove('ai-loading');
                 }
@@ -2198,7 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const parentIdForNewCards = card.id; // New cards are children of the original
 
         // Create a single temporary placeholder in the next column
-        const placeholderContent = "AI is thinking...";
+        const placeholderContent = AI_PLACEHOLDER_TEXT;
         const tempCardId = addCard(targetColumnIndex, parentIdForNewCards, placeholderContent);
         if (!tempCardId) return;
 
@@ -2215,7 +2220,7 @@ document.addEventListener('DOMContentLoaded', () => {
             cardContent: card.content,
             onChunk: (delta) => {
                  // Update the temporary card visually while streaming
-                 if (tempTextarea.value === placeholderContent) {
+                 if (tempTextarea.value === AI_PLACEHOLDER_TEXT) {
                      tempTextarea.value = '';
                      tempTextarea.classList.remove('ai-loading');
                  }
@@ -2232,7 +2237,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             onDone: (fullResponse) => {
                 // Process the full response here
-                const parts = fullResponse.split('---').map(p => p.trim()).filter(p => p.length > 0);
+                const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
                 let lastCardId = null; // Keep track of the last card processed/created
 
                 if (parts.length > 0) {
@@ -2310,7 +2315,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCard = card.id; // New card is child of the original
 
-        const placeholderContent = "AI is thinking...";
+        const placeholderContent = AI_PLACEHOLDER_TEXT;
         // Add as a child in the next column
         const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
         if (!newCardId) return;
@@ -2327,7 +2332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         aiService.generateExpand({
             cardContent: card.content,
             onChunk: (delta) => {
-                if (newTextarea.value === placeholderContent) {
+                if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';
                     newTextarea.classList.remove('ai-loading');
                 }
@@ -2402,7 +2407,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const targetColumnIndex = card.columnIndex + 1;
             const parentIdForNewCard = card.id;
 
-            const placeholderContent = "AI is thinking...";
+            const placeholderContent = AI_PLACEHOLDER_TEXT;
             const newCardId = addCard(targetColumnIndex, parentIdForNewCard, placeholderContent);
             if (!newCardId) return;
 
@@ -2419,7 +2424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 cardContent: card.content,
                 userPrompt: userPrompt,
                 onChunk: (delta) => {
-                    if (newTextarea.value === placeholderContent) {
+                    if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                         newTextarea.value = '';
                          newTextarea.classList.remove('ai-loading');
                     }
@@ -2436,7 +2441,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 onDone: (finalContent) => {
                     // Process the full response, splitting by '---' like in handleAiBreakdown
-                    const parts = finalContent.split('---').map(p => p.trim()).filter(p => p.length > 0);
+                    const parts = finalContent.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
                     let lastCardId = null; // Keep track of the last card processed/created
 
                     if (parts.length > 0) {
