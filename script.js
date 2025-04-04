@@ -774,12 +774,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Render Root Cards for this column
-        const rootCardsInColumn = getColumnCards(columnIndex); // Uses active project
+        // Render Root Cards (cards with no parent) for this column
+        const cardsInColumn = getColumnCards(columnIndex); // Get all cards sorted correctly
 
-        rootCardsInColumn.forEach(card => {
-            const cardEl = createCardElement(card); // Uses active project context for color
-            cardsContainer.appendChild(cardEl);
+        cardsInColumn.forEach(card => {
+            // Only render cards directly into the container if they DON'T have a parent
+            // Child cards are already rendered inside their group elements above.
+            if (!card.parentId) {
+                 const cardEl = createCardElement(card); // Uses active project context for color
+                 cardsContainer.appendChild(cardEl);
+            }
         });
 
         updateToolbarButtons(columnEl, columnIndex); // Uses active project data implicitly
@@ -876,6 +880,29 @@ document.addEventListener('DOMContentLoaded', () => {
             updateProjectLastModified(); // Mark project as modified
             saveProjectsData(); // Save all project data (includes the modification)
             console.log(`Card ${cardId} content saved in project ${activeProjectId}.`);
+
+            // --- BEGIN Group Header Update ---
+            // Check if this card is a parent and update its group header if it exists
+            // and doesn't have a name (meaning it uses content preview)
+            if (!card.name) {
+                const groupEl = getGroupElement(cardId);
+                if (groupEl) {
+                    const groupHeaderContainer = groupEl.querySelector('.group-header');
+                    if (groupHeaderContainer) {
+                        const idPart = `#${cardId.slice(-4)}`;
+                        const contentPreview = card.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
+                        const ellipsis = (card.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
+                        const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
+                        const groupHeaderText = `>> ${idPart}${previewText}`;
+                        const groupHeaderTitle = `Children of ${idPart}${contentPreview ? `: ${card.content?.trim()}` : ''}`;
+
+                        groupHeaderContainer.textContent = groupHeaderText;
+                        groupHeaderContainer.title = groupHeaderTitle;
+                        console.log(`Updated group header for ${cardId} due to content change.`);
+                    }
+                }
+            }
+            // --- END Group Header Update ---
         }
         cardEl.classList.remove('editing');
         clearHighlights();
@@ -1612,7 +1639,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         // Finally, delete the main card
-        deleteCardInternal(cardId, true); // Delete data and DOM
+        const deletedCardData = deleteCardInternal(cardId, true); // Delete data and DOM
+
+        // --- BEGIN Remove Associated Group ---
+        // If the deleted card was a parent, remove its group container from the next column
+        if (deletedCardData) { // Check if card data was successfully retrieved before deletion
+            const groupEl = getGroupElement(cardId);
+            if (groupEl) {
+                groupEl.remove();
+                console.log(`Removed group container group-${cardId} for deleted parent.`);
+                // Ensure the column containing the group is marked for re-render if not already
+                const groupColumnIndex = deletedCardData.columnIndex + 1;
+                if (projectData.columns.length > groupColumnIndex) {
+                     affectedColumns.add(groupColumnIndex);
+                }
+            }
+        }
+        // --- END Remove Associated Group ---
+
 
         // Remove empty group container if the deleted card was the last child in its original group
         if (originalParentId) {
