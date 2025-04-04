@@ -148,12 +148,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Saves the entire projects object to localStorage
     function saveProjectsData() {
         try {
-            // Ensure column prompts are saved
-            if (activeProjectId && projects[activeProjectId] && projects[activeProjectId].data.columns) {
-                 projects[activeProjectId].data.columns.forEach(col => {
-                     if (col.prompt === undefined) col.prompt = ''; // Ensure prompt property exists
-                 });
-            }
             localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
         } catch (e) {
             console.error("Error saving projects data to localStorage:", e);
