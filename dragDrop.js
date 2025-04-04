@@ -277,14 +277,20 @@ function handleDrop(event) {
          }
     } else if (indicatorParent.classList.contains('cards-container')) {
         // Dropped into empty column space
-        newParentId = null; // Becomes a root card (or stays root)
-        // Final check: non-root card cannot be dropped into empty space of non-first column
-        const draggedCardIsRoot = !droppedCardData.parentId;
-        if(targetColumnIndex > 0 && !draggedCardIsRoot) {
-             console.warn(`Drop aborted: Cannot drop non-root card into empty space of column ${targetColumnIndex}.`);
-             clearDragStyles(true); draggedCardId = null; return;
-        }
-    } else {
+             newParentId = null; // Target is to become a root card (or stay root)
+             const draggedCardIsRoot = !droppedCardData.parentId;
+             // Final checks:
+             // 1. Non-root card cannot be dropped into empty space of non-first column.
+             if (targetColumnIndex > 0 && !draggedCardIsRoot) {
+                 console.warn(`Drop aborted: Cannot drop non-root card into empty space of column ${targetColumnIndex}.`);
+                 clearDragStyles(true); draggedCardId = null; return;
+             }
+             // 2. Root card cannot be dropped into empty space of non-first column.
+             if (targetColumnIndex > 0 && draggedCardIsRoot) {
+                 console.warn(`Drop aborted: Cannot drop root card into empty space of column ${targetColumnIndex}.`);
+                 clearDragStyles(true); draggedCardId = null; return;
+             }
+         } else {
         // Should not happen if dragOver logic is correct
         console.warn("Drop aborted: Indicator parent is not group or container.", indicatorParent);
         clearDragStyles(true); draggedCardId = null; return;
