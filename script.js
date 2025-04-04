@@ -223,22 +223,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Ensure all loaded projects have valid data structure and colors calculated
         Object.values(projects).forEach(proj => {
-             if (!proj.data || !proj.data.columns || !proj.data.cards) {
-                  console.warn(`Project ${proj.id} has missing data structure, resetting it.`);
-                  const defaultData = createDefaultProject().data;
-                  proj.data = defaultData;
-             }
-             // Ensure columns have prompt property
-             proj.data.columns.forEach(col => {
+            if (!proj.data || !proj.data.columns || !proj.data.cards) {
+                console.warn(`Project ${proj.id} has missing data structure, resetting it.`);
+                const defaultData = createDefaultProject().data;
+                proj.data = defaultData;
+            }
+            // Ensure columns have prompt property
+            proj.data.columns.forEach(col => {
                 if (col.prompt === undefined) col.prompt = '';
-             });
-             // Recalculate colors on load
-             Object.values(proj.data.cards).forEach(card => delete card.color);
-             Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card, proj.data)); // Pass project data
-             // Ensure order exists
-              Object.values(proj.data.cards).forEach(card => {
-                   if (card.order === undefined) card.order = Date.now() + Math.random();
-              });
+            });
+            // Recalculate colors on load
+            Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card, proj.data)); // Pass project data
         });
 
 
@@ -367,18 +362,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Find children in the next column, sorted by order
-            const children = Object.values(projectData.cards)
-                .filter(c => c.parentId === cardId && c.columnIndex === card.columnIndex + 1)
-                .sort((a, b) => a.order - b.order);
-
+            const children = getChildCards(cardId, card.columnIndex + 1)
             // Recursively traverse children
             children.forEach(child => traverse(child.id));
         }
 
         // Start traversal from root cards (column 0, no parent), sorted by order
-        const rootCards = Object.values(projectData.cards)
-            .filter(card => card.columnIndex === 0 && !card.parentId)
-            .sort((a, b) => a.order - b.order);
+        const rootCards = getColumnCards(0)
 
         rootCards.forEach(rootCard => traverse(rootCard.id));
 
@@ -507,22 +497,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Color Calculation (Adapted) ---
     // Now requires projectData to access relevant cards for calculation
-    function getColorForCard(card, projectData = getActiveProjectData()) {
+    function getColorForCard(card) {
         if (!card) return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
 
-        const getCards = (colIdx) => Object.values(projectData.cards)
-            .filter(c => c.columnIndex === colIdx && !c.parentId)
-            .sort((a, b) => a.order - b.order);
-        const getParent = (pId) => projectData.cards[pId];
-
         if (card.columnIndex === 0 && !card.parentId) { // Root Card
-            const rootCards = getCards(0);
+            const rootCards = getColumnCards(0);
             const rootIndex = rootCards.findIndex(c => c.id === card.id);
             const hue = (BASE_COLOR_HUE + (rootIndex >= 0 ? rootIndex : 0) * HUE_ROTATION_STEP) % 360;
             return `hsl(${hue}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
 
         } else if (card.parentId) { // Child Card
-            const parentCard = getParent(card.parentId);
+            const parentCard = getCard(card.parentId);
             if (!parentCard) {
                 console.warn(`Parent card ${card.parentId} not found for card ${card.id}. Using default color.`);
                 // Fallback: Use a slightly darker default color if parent is missing
@@ -530,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Ensure parent color is calculated if missing (pass projectData down)
-            const parentColor = parentCard.color || getColorForCard(parentCard, projectData);
+            const parentColor = parentCard.color || getColorForCard(parentCard);
 
             try {
                 const match = parentColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
@@ -538,9 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     let [, h, s, l] = match.map(Number); // Inherit parent's H, S, L
 
                     // Find siblings in the same group (same parent, same column)
-                    const siblings = Object.values(projectData.cards)
-                        .filter(c => c.parentId === card.parentId && c.columnIndex === card.columnIndex)
-                        .sort((a, b) => a.order - b.order);
+                    const siblings = getColumnCards(card.columnIndex).filter(c => c.parentId === card.parentId);
 
                     // Find the index of the current card among its siblings
                     const siblingIndex = siblings.findIndex(c => c.id === card.id);
@@ -548,28 +531,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Calculate new lightness based on position within the group
                     const newLightness = Math.max(15, l - (indexInGroup * GROUP_LIGHTNESS_STEP_DOWN));
-                    // Keep parent's saturation for now, or adjust slightly if desired:
-                    // const newSaturation = Math.min(100, s + (indexInGroup * 1)); // Optional: slightly increase saturation too
 
                     return `hsl(${h}, ${s}%, ${newLightness}%)`; // Use parent's hue and saturation, adjusted lightness
                 } else {
                     console.warn(`Could not parse parent color ${parentColor}. Using fallback based on group position.`);
-                    // Fallback: Still try to darken based on group position if parent color parsing failed
-                    const siblings = Object.values(projectData.cards)
-                        .filter(c => c.parentId === card.parentId && c.columnIndex === card.columnIndex)
-                        .sort((a, b) => a.order - b.order);
-                    const siblingIndex = siblings.findIndex(c => c.id === card.id);
-                    const indexInGroup = siblingIndex >= 0 ? siblingIndex : 0;
-                    const lightness = Math.max(15, BASE_COLOR_LIGHTNESS - (indexInGroup * GROUP_LIGHTNESS_STEP_DOWN));
-                    return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${lightness}%)`;
+                    return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
                 }
             } catch (e) {
                 console.error("Error processing parent color or calculating group color:", e);
-                // Final fallback: Use a default slightly darker color
-                return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - GROUP_LIGHTNESS_STEP_DOWN}%)`;
+                return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
             }
-        } else {
-            // This case should ideally not happen for cards in columns > 0, but handle defensively
+        } else { // This case should ideally not happen for cards in columns > 0, but handle defensively
             console.warn(`Card ${card.id} in column ${card.columnIndex} has no parent but is not in column 0. Using default color.`);
             return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
         }
@@ -783,13 +755,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderColumnContent(columnEl, columnIndex) {
         const cardsContainer = columnEl.querySelector('.cards-container');
         cardsContainer.innerHTML = '';
-        const projectData = getActiveProjectData();
 
         // Render Groups first
         if (columnIndex > 0) {
-            const potentialParentCards = Object.values(projectData.cards)
-                .filter(card => card.columnIndex === columnIndex - 1)
-                .sort((a, b) => a.order - b.order);
+            const potentialParentCards = getColumnCards(columnIndex - 1)
 
             potentialParentCards.forEach(parentCard => {
                  const groupEl = createGroupElement(parentCard.id); // Uses active project context
@@ -853,31 +822,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // REVISED: Update Toolbar Buttons - Uses active project data, updates prompt button
     function updateToolbarButtons(columnEl, columnIndex) {
-         const addCardBtn = columnEl.querySelector('.add-card-btn');
-         const addColBtn = columnEl.querySelector('.add-column-btn');
-         const delColBtn = columnEl.querySelector('.delete-column-btn');
-         const addPromptBtn = columnEl.querySelector('.add-prompt-btn'); // Get prompt button
+        const addCardBtn = columnEl.querySelector('.add-card-btn');
+        const addColBtn = columnEl.querySelector('.add-column-btn');
+        const delColBtn = columnEl.querySelector('.delete-column-btn');
+        const addPromptBtn = columnEl.querySelector('.add-prompt-btn'); // Get prompt button
 
-         const numColumns = columnsContainer.children.length; // Based on current DOM
-         const isRightmost = columnIndex === numColumns - 1;
-         const projectData = getActiveProjectData();
-         const columnData = getColumnData(columnIndex); // Get column data
+        const numColumns = columnsContainer.children.length; // Based on current DOM
+        const isRightmost = columnIndex === numColumns - 1;
+        const projectData = getActiveProjectData();
 
-         addCardBtn.classList.toggle('hidden', columnIndex !== 0);
-         addColBtn.classList.toggle('hidden', !isRightmost);
+        addCardBtn.classList.toggle('hidden', columnIndex !== 0);
+        addColBtn.classList.toggle('hidden', !isRightmost);
 
-         const columnCards = Object.values(projectData.cards).filter(card => card.columnIndex === columnIndex);
-         // Use projectData.columns.length for minimum check
-         const canDelete = isRightmost && projectData.columns.length > MIN_COLUMNS && columnCards.length === 0;
-         delColBtn.classList.toggle('hidden', !canDelete);
-         delColBtn.disabled = !canDelete;
+        const columnCards = getColumnCards(columnIndex)
+        // Use projectData.columns.length for minimum check
+        const canDelete = isRightmost && projectData.columns.length > MIN_COLUMNS && columnCards.length === 0;
+        delColBtn.classList.toggle('hidden', !canDelete);
+        delColBtn.disabled = !canDelete;
 
-         // Update prompt button text/indicator
-         if (addPromptBtn) {
-             const promptIndicator = columnData?.prompt ? '📝' : '';
-             addPromptBtn.textContent = `Prompt ${promptIndicator}`;
-             addPromptBtn.disabled = !aiService.areAiSettingsValid(); // Also disable if AI not ready
-         }
+        // Update prompt button text/indicator
+        if (addPromptBtn) {
+            const columnData = getColumnData(columnIndex); // Get column data
+            const promptIndicator = columnData?.prompt ? '📝' : '';
+            addPromptBtn.textContent = `Prompt ${promptIndicator}`;
+            addPromptBtn.disabled = !aiService.areAiSettingsValid(); // Also disable if AI not ready
+        }
     }
 
     // No change needed for autoResizeTextarea
@@ -1707,7 +1676,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const childrenToMove = Object.values(projectData.cards).filter(c => c.parentId === oldParentId);
+        const childrenToMove = getChildCards(oldParentId)
         if (childrenToMove.length === 0) {
             console.log(`reparentChildren: No children found for ${oldParentId}.`);
             return; // Nothing to do
@@ -1902,7 +1871,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const numColumns = projectData.columns.length;
         const columnEl = getColumnElementByIndex(columnIndex); // Get DOM element
         const isRightmost = columnIndex === numColumns - 1;
-        const columnCards = Object.values(projectData.cards).filter(card => card.columnIndex === columnIndex);
+        const columnCards = getColumnCards(columnIndex);
         const canDelete = isRightmost && numColumns > MIN_COLUMNS && columnCards.length === 0;
 
         if (!canDelete) {
