@@ -575,31 +575,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper to get card depth (Adapted)
-    function getCardDepth(cardId, projectData = getActiveProjectData()) {
-         let level = 0;
-         let currentCard = projectData.cards[cardId];
-         while (currentCard && currentCard.parentId) {
-             level++;
-             currentCard = projectData.cards[currentCard.parentId];
-         }
-         return level;
-    }
-
-    // No change needed for getHighlightColor
-    function getHighlightColor(baseColor) {
-        try {
-            const match = baseColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-            if (match) {
-                const [, h, s, l] = match.map(Number);
-                const highlightL = Math.max(10, l - 5);
-                const highlightS = Math.min(100, s + 5);
-                return `hsl(${h}, ${highlightS}%, ${highlightL}%)`;
-            }
-        } catch (e) { console.warn("Could not parse color for highlight:", baseColor); }
-        return 'rgba(0, 0, 0, 0.15)';
-    }
-
     // --- DOM Manipulation & Rendering (Adapted for Active Project) ---
 
     function getCardElement(cardId) {
@@ -636,7 +611,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-ai-actions ai-feature">
                      <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>⬇️</button>
-                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>🪴</button>
+                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
                      <button class="ai-breakdown-btn" title="Brainstorm (to next column)" ${!aiReady ? 'disabled' : ''}>🧠</button>
                      <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
                 </div>
@@ -849,8 +824,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!projectData) {
             console.error("Cannot render app: No active project data found.");
             // Handle this case - maybe show an error message or default screen
-             columnsContainer.innerHTML = '<p style="padding: 20px; text-align: center;">Error: No project selected or project data is corrupted.</p>';
-             return;
+            columnsContainer.innerHTML = '<p style="padding: 20px; text-align: center;">Error: No project selected or project data is corrupted.</p>';
+            return;
         }
 
         let maxColumnIndex = MIN_COLUMNS - 1;
@@ -1475,7 +1450,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else {
              console.error("Target container or column element not found. Re-rendering app.");
-             renderApp(); // Fallback to full render
+             renderApp(); // Fallback to full render - this path should ideally not be hit often
         }
 
         // Re-render next column if it exists and might be affected (e.g., group headers for the new card)
@@ -2659,8 +2634,6 @@ document.addEventListener('DOMContentLoaded', () => {
         getColumnCards: getColumnCards,
         getChildCards: getChildCards,
         updateCardContent: updateCardContent,
-        // Maybe add a function to trigger re-render of specific columns if needed?
-        // rerenderColumns: (columnIndices) => { /* ... */ }
     };
 
     // Attach the single keydown listener using event delegation
