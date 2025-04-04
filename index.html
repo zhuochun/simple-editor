@@ -52,8 +52,11 @@
         </div>
     </div>
 
-    <script src="aiService.js"></script> <!-- Include AI Service first -->
-    <script src="script.js"></script>
-    <script src="cardShortcuts.js"></script>
+    <!-- Load modules in order: data -> dragDrop -> aiService -> main script -->
+    <script type="module" src="data.js"></script>
+    <script type="module" src="dragDrop.js"></script>
+    <script type="module" src="aiService.js"></script>
+    <script type="module" src="cardShortcuts.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>

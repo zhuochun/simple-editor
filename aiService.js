@@ -257,7 +257,7 @@ function generateCustom({ cardContent, userPrompt, onChunk, onError, onDone }) {
 
 
 // Export functions or the service object if preferred
-const aiService = {
+export const aiService = {
     initializeAiSettings,
     areAiSettingsValid,
     generateContinuation,

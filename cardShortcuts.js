@@ -17,7 +17,7 @@ function getTotalLines(textarea) {
 }
 
 // Main keyboard shortcut handler for card textareas
-function handleCardTextareaKeydown(event, helpers) {
+export function handleCardTextareaKeydown(event, helpers) {
     const textarea = event.target;
 
     // Ensure the event target is a card textarea
@@ -65,8 +65,12 @@ function handleCardTextareaKeydown(event, helpers) {
                     insertBeforeCardId = siblings[currentIndex + 1].id;
                 }
 
-                // Add new card below with the remaining text (focus/scroll is handled by addCard)
-                helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, textAfterCursor, insertBeforeCardId);
+                // Add new card below with the remaining text
+                const newCardId = helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, textAfterCursor, insertBeforeCardId);
+                // Explicitly focus the new card
+                if (newCardId) {
+                    helpers.focusCardTextarea(newCardId, 'start');
+                }
             }
             // === Alt+Enter: Split Card as Child ===
             else if (altPressed) {
@@ -79,9 +83,9 @@ function handleCardTextareaKeydown(event, helpers) {
                 const textBeforeCursor = textarea.value.substring(0, selectionStart);
                 const textAfterCursor = textarea.value.substring(selectionStart);
 
-                 // Update current card content (assuming helper exists)
+                // Update current card content (assuming helper exists)
                 helpers.updateCardContent(cardId, textBeforeCursor);
-                 // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
+                // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
 
                 const targetColumnIndex = currentCardData.columnIndex + 1;
                 // Add new card as child with the remaining text (focus/scroll is handled by addCard)
@@ -150,7 +154,7 @@ function handleCardTextareaKeydown(event, helpers) {
 
         // === Up Arrow: Move to Previous Card (if on first line) ===
         case 'ArrowUp':
-             if (!ctrlPressed && !altPressed) {
+            if (!ctrlPressed && !altPressed) {
                 const cursorLine = getCursorLine(textarea);
                 // Check if cursor is on the first line
                 if (cursorLine === 0 && textarea.selectionStart === 0) {
@@ -286,7 +290,7 @@ function handleCardTextareaKeydown(event, helpers) {
 
                 let siblings;
                 let currentIndex;
-                 if (currentCardData.parentId) {
+                if (currentCardData.parentId) {
                     siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
                 } else {
                     siblings = helpers.getColumnCards(currentCardData.columnIndex);
@@ -311,15 +315,10 @@ function handleCardTextareaKeydown(event, helpers) {
                     helpers.deleteCardInternal(nextCardId); // Use internal delete
                     // 4. Focus current card at the merge point
                     helpers.focusCardTextarea(cardId, currentCursorPos);
-                     // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
+                    // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
                 }
             }
             break;
+
     }
 }
-
-// Make the handler available (e.g., attaching to window or exporting if using modules)
-// Simple approach for now: attach to window
-window.cardShortcuts = {
-    handleCardTextareaKeydown
-};
