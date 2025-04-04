@@ -217,25 +217,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (!activeProjectId) {
             // If projects exist but no active ID could be determined (shouldn't happen often)
             const sortedProjects = Object.values(projects).sort((a, b) => b.lastModified - a.lastModified);
-             activeProjectId = sortedProjects[0].id;
-             saveActiveProjectId();
+            activeProjectId = sortedProjects[0].id;
+            saveActiveProjectId();
         }
-
-        // Ensure all loaded projects have valid data structure and colors calculated
-        Object.values(projects).forEach(proj => {
-            if (!proj.data || !proj.data.columns || !proj.data.cards) {
-                console.warn(`Project ${proj.id} has missing data structure, resetting it.`);
-                const defaultData = createDefaultProject().data;
-                proj.data = defaultData;
-            }
-            // Ensure columns have prompt property
-            proj.data.columns.forEach(col => {
-                if (col.prompt === undefined) col.prompt = '';
-            });
-            // Recalculate colors on load
-            Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card, proj.data)); // Pass project data
-        });
-
 
         console.log(`Initial active project: ${projects[activeProjectId]?.title} (${activeProjectId})`);
         loadActiveProjectData(); // Load the data for the determined active project
@@ -251,6 +235,20 @@ document.addEventListener('DOMContentLoaded', () => {
         // In the current setup, getActiveProjectData() gives direct access,
         // so there's no separate 'appData' to load *into*.
         // This function primarily ensures the activeProjectId is valid before proceeding.
+        const proj = projects[activeProjectId]
+        // Ensure the active projects have valid data structure and colors calculated
+        if (!proj.data || !proj.data.columns || !proj.data.cards) {
+            console.warn(`Project ${proj.id} has missing data structure, resetting it.`);
+            const defaultData = createDefaultProject().data;
+            proj.data = defaultData;
+        }
+        // Ensure columns have prompt property
+        proj.data.columns.forEach(col => {
+            if (col.prompt === undefined) col.prompt = '';
+        });
+        // Recalculate colors on load
+        Object.values(proj.data.cards).forEach(card => card.color = getColorForCard(card)); // Pass project data
+
         console.log(`Loaded data for project: ${projects[activeProjectId].title}`);
     }
 
