@@ -737,15 +737,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             requestAnimationFrame(() => {
                 const textarea = newCardEl.querySelector('.card-content');
-                 if (textarea && initialContent.includes(AI_PLACEHOLDER_TEXT)) {
-                     textarea.classList.add('ai-loading');
-                 }
-                 if (newCardEl) {
+                if (textarea && initialContent.includes(AI_PLACEHOLDER_TEXT)) {
+                    textarea.classList.add('ai-loading');
+                }
+                // Call the dedicated focus function instead
+                if (newCardEl && textarea && !initialContent.includes(AI_PLACEHOLDER_TEXT)) {
+                    focusCardTextarea(newCardData.id, 'start'); // Use dedicated function, focus at start
+                } else if (newCardEl) {
+                    // Still scroll even if not focusing (e.g., AI placeholder)
                     scrollIntoViewIfNeeded(newCardEl);
-                    if (textarea && !initialContent.includes(AI_PLACEHOLDER_TEXT)) {
-                        textarea.focus();
-                    }
-                 }
+                }
             });
             return newCardData.id; // Return ID
         }
