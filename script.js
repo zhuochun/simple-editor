@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const AI_RESPONSE_SEPARATOR = '---'; // Keep UI constant here
     const SIDEBAR_COLLAPSED_KEY = 'sidebarCollapsed';
 
+    // --- State ---
+    let isAiActionInProgress = false; // Flag to prevent concurrent conflicting actions
+
     // --- Helper Functions (DOM/UI specific) ---
 
     function getCardElement(cardId) {
@@ -223,6 +226,62 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         console.log(`Focused card ${cardId}, position: ${position}`);
     }
+
+    // --- Action Locking Helpers ---
+
+    function disableConflictingActions() {
+        console.log("Disabling conflicting actions...");
+        isAiActionInProgress = true;
+        document.body.classList.add('ai-busy'); // Add class for potential global styling/cursor changes
+
+        // Disable buttons that modify structure/content significantly
+        columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn').forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add('disabled-by-ai'); // Add a specific class for targeted re-enabling
+        });
+
+        // Disable drag handles (card headers)
+        columnsContainer.querySelectorAll('.card-header').forEach(header => {
+            header.draggable = false;
+            header.classList.add('disabled-by-ai');
+        });
+         // Disable project deletion/switching
+         projectListContainer.querySelectorAll('.delete-project-btn, .project-item').forEach(el => {
+             if (el.classList.contains('project-item')) {
+                 el.style.pointerEvents = 'none'; // Prevent switching
+             } else {
+                 el.disabled = true;
+             }
+             el.classList.add('disabled-by-ai');
+         });
+         addProjectBtn.disabled = true;
+         addProjectBtn.classList.add('disabled-by-ai');
+    }
+
+    function enableConflictingActions() {
+        console.log("Enabling conflicting actions...");
+        isAiActionInProgress = false;
+        document.body.classList.remove('ai-busy');
+
+        // Re-enable specifically disabled elements
+        document.querySelectorAll('.disabled-by-ai').forEach(el => {
+            if (el.tagName === 'BUTTON') {
+                // Re-enable button, but respect original disabled state for delete column
+                if (!(el.classList.contains('delete-column-btn') && el.classList.contains('hidden'))) {
+                     el.disabled = false;
+                }
+            } else if (el.classList.contains('card-header')) {
+                el.draggable = true;
+            } else if (el.classList.contains('project-item')) {
+                 el.style.pointerEvents = ''; // Restore switching
+            }
+            el.classList.remove('disabled-by-ai');
+        });
+
+        // Explicitly re-check delete column button state
+        updateAllToolbarButtons();
+    }
+
 
     // --- Rendering Functions ---
 
@@ -771,6 +830,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const shouldConfirm = numDescendantsWithContent > 0 || (hasContent && descendantIds.length > 0);
         const confirmMessage = `Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${descendantIds.length} descendant(s) (${numDescendantsWithContent} with content) from project "${data.projects[data.activeProjectId].title}"?`;
 
+        if (isAiActionInProgress) {
+            alert("Please wait for the current AI action to complete before deleting cards.");
+            return;
+        }
+
         if (shouldConfirm && !confirm(confirmMessage)) {
             return;
         }
@@ -811,6 +875,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleAddColumn() {
+         if (isAiActionInProgress) {
+             alert("Please wait for the current AI action to complete before adding columns.");
+             return;
+         }
          const newIndex = data.addColumnData(false); // Add data first, don't save yet
          if (newIndex === -1) return;
 
@@ -825,6 +893,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleDeleteColumn(columnIndex) {
+        if (isAiActionInProgress) {
+            alert("Please wait for the current AI action to complete before deleting columns.");
+            return;
+        }
         const projectTitle = data.projects[data.activeProjectId]?.title;
         // Confirmation uses data layer checks via deleteColumnData
         if (!confirm(`Delete this empty column from project "${projectTitle}"?`)) return;
@@ -998,8 +1070,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAiContinue(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+
         const currentCard = data.getCard(cardId); // Still need current card for column/parent info
         if (!currentCard) return;
+
+        disableConflictingActions(); // Lock UI
 
         // Find insertBeforeId using data helpers
         let insertBeforeId = null;
@@ -1040,6 +1116,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Update data model with error
                 data.updateCardContentData(newCardId, newTextarea.value);
                 data.saveProjectsData();
+                enableConflictingActions(); // Unlock UI on error
             },
             onDone: (finalContent) => {
                  newTextarea.classList.remove('ai-loading');
@@ -1047,8 +1124,9 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (data.updateCardContentData(newCardId, finalContent)) {
                      data.saveProjectsData();
                      // Update the group header for the *original* card that triggered the AI
-                     updateGroupHeaderDisplay(currentCard.id);
+                      updateGroupHeaderDisplay(currentCard.id);
                  }
+                 enableConflictingActions(); // Unlock UI on success
                  console.log("AI Continue completed for card:", newCardId);
             }
         });
@@ -1056,8 +1134,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAiBreakdown(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+
         const card = data.getCard(cardId);
         if (!card || !card.content?.trim()) { alert("Card has no content to breakdown."); return; }
+
+        disableConflictingActions(); // Lock UI
 
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCards = card.id;
@@ -1089,6 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 tempTextarea.classList.remove('ai-loading');
                 data.updateCardContentData(tempCardId, tempTextarea.value); // Save error
                 data.saveProjectsData();
+                enableConflictingActions(); // Unlock UI on error
             },
             onDone: (fullResponse) => {
                 const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
@@ -1148,14 +1231,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (lastCardId && data.getCard(lastCardId)) {
                     requestAnimationFrame(() => scrollIntoViewIfNeeded(getCardElement(lastCardId)));
                 }
+                enableConflictingActions(); // Unlock UI on success
             }
         });
     }
 
     function handleAiExpand(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+
         const card = data.getCard(cardId);
         if (!card || !card.content?.trim()) { alert("Card has no content to expand."); return; }
+
+        disableConflictingActions(); // Lock UI
 
         const targetColumnIndex = card.columnIndex + 1;
         const parentIdForNewCard = card.id;
@@ -1187,6 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 newTextarea.classList.remove('ai-loading');
                 data.updateCardContentData(newCardId, newTextarea.value); // Save error
                 data.saveProjectsData();
+                enableConflictingActions(); // Unlock UI on error
             },
             onDone: (finalContent) => {
                  newTextarea.classList.remove('ai-loading');
@@ -1194,8 +1283,9 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (data.updateCardContentData(newCardId, finalContent)) { // Save final content
                      data.saveProjectsData();
                      // Update the group header for the original card
-                     updateGroupHeaderDisplay(card.id);
+                      updateGroupHeaderDisplay(card.id);
                  }
+                 enableConflictingActions(); // Unlock UI on success
                  console.log("AI Expand completed for card:", newCardId);
             }
         });
@@ -1203,6 +1293,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleAiCustom(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+
         const card = data.getCard(cardId);
         if (!card) return;
 
@@ -1236,6 +1328,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!userPrompt) { alert("Please enter a prompt."); return; }
             closeModal();
 
+            disableConflictingActions(); // Lock UI
+
             // Proceed with AI call
             const targetColumnIndex = card.columnIndex + 1;
             const parentIdForNewCard = card.id;
@@ -1268,6 +1362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     placeholderTextarea.classList.remove('ai-loading');
                     data.updateCardContentData(placeholderCardId, placeholderTextarea.value); // Save error
                     data.saveProjectsData();
+                    enableConflictingActions(); // Unlock UI on error
                 },
                 onDone: (finalContent) => {
                     // Process potential multi-part response
@@ -1323,6 +1418,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (lastCardId && data.getCard(lastCardId)) {
                         requestAnimationFrame(() => scrollIntoViewIfNeeded(getCardElement(lastCardId)));
                     }
+                    enableConflictingActions(); // Unlock UI on success
                 }
             });
         });
@@ -1379,6 +1475,11 @@ document.addEventListener('DOMContentLoaded', () => {
             getCard: data.getCard,
             moveCardData: (cardId, targetCol, targetParent, insertBefore) => {
                  // Wrapper to handle UI update after data move
+                 if (isAiActionInProgress) {
+                     console.log("AI action in progress, preventing card move.");
+                     // Optionally provide feedback to the user (e.g., visual cue on drag element)
+                     return { success: false, reason: "AI action in progress" }; // Prevent move
+                 }
                  const moveResult = data.moveCardData(cardId, targetCol, targetParent, insertBefore);
                  if (moveResult.success) {
                      // Check if the move requires rendering columns that might not exist in the DOM yet
