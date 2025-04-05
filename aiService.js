@@ -288,35 +288,94 @@ ${context.globalPrompt}
 
 ${context.columnPrompt}
 
-# Hierarchical Context -- Parent Card Content
+# Hierarchical Context (Upwards and Sideways)
+
+## Parent Card Content
 
 ${context.parentCardContent}
 
-# Sequence Context (Cards preceding the current one under the same parent) -- Preceding Sibling Cards Content
+## Preceding Sibling Cards Content
 
 ${context.precedingSiblingsContent}
 
-# Anchor Card (The card to continue FROM) -- Current Card Content
+# Anchor Card Content (The card to continue FROM)
 
 ${context.currentCardContent}
 
-## Task
+## Task: Generate Next Sibling Card
 
-Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Current Card Content".
-This new card will be placed immediately after the current card, within the same column and under the same parent (as the next sibling).
+Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Anchor Card Content". This new card will be placed immediately after the anchor card, within the same column and under the same parent (as its next sibling).
 
 Focus on:
-- Directly continuing the thought, topic, or sequence from the "Current Card Content".
-- Maintaining coherence with the "Preceding Sibling Cards Content" and the "Parent Card Content".
-- Adhere to any explicit style guidelines specified in the Global or Column Prompts. Crucially, analyze and **mimic the existing writing style** (considering aspects like tone, voice, vocabulary, sentence structure, formality, pacing, etc.) evident in the Parent Card, Preceding Sibling Cards, and *especially* the Current Card Content. The goal is seamless stylistic consistency.
-- Adhering to any other relevant instructions in the Global and Column Prompts.
-- Output *only* the text for the new card.
+- **Direct Continuation:** Seamlessly continue the thought, narrative, argument, or sequence presented in the "Anchor Card Content".
+- **Local Coherence:** Ensure the new card flows logically from the "Anchor Card Content" and maintains consistency with the "Preceding Sibling Cards Content".
+- **Hierarchical Relevance:** The content should remain relevant to the "Parent Card Content".
+- **Style Consistency:** Analyze and **strictly mimic the existing writing style** (considering tone, voice, vocabulary, sentence complexity, formality, pacing, etc.) evident in the Parent Card, Preceding Sibling Cards, and *especially* the Anchor Card Content. The goal is seamless stylistic integration.
+- **Adherence to Guidelines:** Follow any specific instructions or constraints mentioned in the Global and Column Prompts.
+- **Output:** Generate *only* the plain text content for the new card. Do not include any introductions, explanations, or formatting.
 `;
 
     messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
+
+function generateSummary({ card, onChunk, onError, onDone }) {
+    const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+    const context = _getCardContext(card);
+
+    // Construct the prompt using fetched context
+    let userPromptContent = `# Overall Document Context
+
+${context.globalPrompt}
+
+# Current Column Context
+
+${context.columnPrompt}
+
+# Hierarchical Context (Upwards and Sideways)
+
+## Parent Card Content
+
+${context.parentCardContent}
+
+## Preceding Sibling Cards Content
+
+${context.precedingSiblingsContent}
+
+## Following Sibling Cards Content
+
+${context.followingSiblingsContent}
+
+# Content to Summarize
+
+## Source Card Content (Parent of the content being summarized)
+
+${context.currentCardContent}
+
+## Existing Child Cards Content (Direct descendants to include in summary)
+
+${context.existingChildrenContent}
+
+# Task: Generate Concise Summary
+
+Based on all provided context, generate a **concise summary** that synthesizes the core information from *both* the "Source Card Content" and its "Existing Child Cards Content". The output should be a single, significantly shorter text block capturing the essence of this card and its direct children.
+
+Focus on:
+- **Condensing Information:** Identify and extract the most critical points, arguments, or themes from the combined source and child content.
+- **Synthesis:** Integrate the key information from the source card and its children into a coherent, unified summary. Do not simply list points separately.
+- **Accuracy:** Ensure the summary accurately reflects the main ideas of the original content, without introducing misinterpretations.
+- **Brevity:** The primary goal is length reduction while retaining essential meaning.
+- **Contextual Coherence:** The summary should still make sense within the sequence (considering Parent, Preceding, and Following Siblings) and adhere to Global/Column prompts.
+- **Writing Style:** Maintain the established writing style evident in the context (Source Card, Parent, Siblings), unless specific instructions dictate otherwise.
+- **Direct Output:** Output *only* the generated summary text. Do not include introductions, explanations, or section titles. It should be a single block of plain text ready to potentially replace the Source Card's content or be used elsewhere.
+ `;
+
+    messages.push({ role: "user", content: userPromptContent });
+
+    streamChatCompletion({ messages, onChunk, onError, onDone });
+}
+
 
 function generateBreakdown({ card, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
@@ -331,29 +390,31 @@ ${context.globalPrompt}
 
 ${context.columnPrompt}
 
-# Hierarchical Context -- Grandparent Card Content (Parent of the Source Card)
+# Hierarchical Context
+
+## Parent Card Content (of the Source Card)
 
 ${context.parentCardContent}
 
-# Source Card (The card to brainstorm FROM) -- Source Card Content
+# Source Card Content (The card to brainstorm FROM)
 
 ${context.currentCardContent}
-
-# Existing Children Context (Current children of the Source Card) -- Existing Child Cards Content
-
-${context.existingChildrenContent}
 
 # Target Column Context (Where the new child cards will be placed)
 
 ${context.targetColumnPrompt}
 
+## Existing Child Cards Context (of the Source Card)
+
+${context.existingChildrenContent}
+
 # Task: Brainstorm Child Cards
 
-Based on the "Source Card Content" and all provided context, brainstorm and generate the text content for **multiple distinct child cards**.
+Based on the "Source Card Content" and all provided context, brainstorm and generate the text content for **multiple distinct child cards** (around 3-5 cards).
 
 Focus on:
 - **Elaboration/Decomposition:** Each generated child card should explore, detail, break down, or provide examples/evidence related to a specific aspect of the "Source Card Content".
-- **Relevance & Coherence:** Ideas must be directly relevant to the Source Card and coherent with the Grandparent Card content and any specified Global/Column Prompts.
+- **Relevance & Coherence:** Ideas must be directly relevant to the Source Card and coherent with the Parent Card content and any specified Global/Column Prompts.
 - **Novelty (Consider Existing Children):** Aim to generate *new* insights or directions that complement or logically follow any "Existing Child Cards Content", rather than repeating them. If no children exist, generate foundational ideas.
 - **Adherence to Target Context:** Pay close attention to the "Target Column Prompt" if provided, as it may dictate the specific *purpose* or *type* of child cards required (e.g., arguments, steps, examples).
 - **Writing Style:** Maintain a style consistent with the Source Card and any overarching style guides (Global/Column Prompts), unless the Target Column Prompt suggests a different style for the children.
@@ -393,21 +454,21 @@ ${context.precedingSiblingsContent}
 
 ${context.followingSiblingsContent}
 
-# Card to Enrich (The Original Content) -- Current Card Content (Original)
+# Original Card Content (The card to enrich)
 
 ${context.currentCardContent}
 
-# Hierarchical Context (Downwards) -- Existing Child Cards Content
+# Existing Child Cards Content (of the Original Card)
 
 ${context.existingChildrenContent}
 
-# Task: Enrich Current Card
+# Task: Enrich Original Card
 
-Rewrite the "Current Card Content (Original)" to create a **significantly longer and more detailed version**. The goal is to enhance and expand upon the existing ideas within the scope of this single card.
+Rewrite the "Original Card Content" to create a **significantly longer and more detailed version**. The goal is to enhance and expand upon the existing ideas within the scope of this single card.
 
 Focus on:
 - **Adding Depth:** Incorporate relevant supporting details, examples, explanations, descriptions, definitions, context, or narrative elements that elaborate on the original points.
-- **Maintaining Focus:** Ensure all added content directly relates to and expands upon the core subject matter established in the "Current Card Content (Original)". Do not introduce entirely new, unrelated topics.
+- **Maintaining Focus:** Ensure all added content directly relates to and expands upon the core subject matter established in the "Original Card Content". Do not introduce entirely new, unrelated topics.
 - **Coherence & Flow:** The enriched content must remain consistent with the "Parent Card Content" and the overall document context (Global/Column Prompts). It should also flow logically *from* the "Preceding Sibling Cards Content" and provide a smooth transition *towards* the "Following Sibling Cards Content" (if it exists).
 - **Supporting Children:** If "Existing Child Cards Content" is provided, the enriched version should ideally provide a stronger foundation or smoother transition into those child topics.
 - **Writing Style:** Analyze and maintain the established writing style (tone, voice, vocabulary, formality) evident in the surrounding context (Parent, Siblings, Original Content), unless specific style instructions exist in the prompts.
@@ -446,33 +507,33 @@ ${context.precedingSiblingsContent}
 
 ${context.followingSiblingsContent}
 
-# Primary Subject Card -- Current Card Content
+# Current Card Content (Primary Subject Card)
 
 ${context.currentCardContent}
 
-# Hierarchical Context (Downwards) -- Existing Child Cards Content
+# Existing Child Cards Content
 
 ${context.existingChildrenContent}
 
 # User's Custom Instruction
 
-User Request:${userPrompt}
+${userPrompt}
 
 # Task: Execute Custom Instruction
 
-Carefully analyze the "User Request" and execute it based on the "Current Card Content" and all the surrounding context provided.
+Carefully analyze the "User's Custom Instruction" and execute it based on the "Current Card Content" and all the surrounding context provided.
 
 Focus on:
-- **Understanding Intent:** Interpret the "User Request" accurately within the provided context.
+- **Understanding Intent:** Interpret the "User's Custom Instruction" accurately within the provided context.
 - **Applying Instruction:** Apply the instruction primarily to the "Current Card Content" unless the request clearly specifies otherwise (e.g., comparing it to siblings, summarizing children, generating new related cards).
-- **Contextual Consistency:** Ensure the output remains coherent with the Parent, Siblings, Children, and Global/Column Prompts, *unless* the "User Request" explicitly requires deviation (e.g., "rewrite this in a completely different style," "find contradictions with the parent card").
-- **Style Adherence:** Maintain the established writing style found in the context, unless the "User Request" specifies a change.
+- **Contextual Consistency:** Ensure the output remains coherent with the Parent, Siblings, Children, and Global/Column Prompts, *unless* the "User's Custom Instruction" explicitly requires deviation (e.g., "rewrite this in a completely different style," "find contradictions with the parent card").
+- **Style Adherence:** Maintain the established writing style found in the context, unless the "User's Custom Instruction" specifies a change.
 - **Output Format:**
     - Generate plain text only.
     - If the request implies modifying the current card (e.g., "rewrite," "shorten," "add examples to this"), output the complete new text intended to replace the "Current Card Content".
     - If the request asks for analysis, information, or suggestions *about* the card, provide that information directly.
     - If the request explicitly asks for *multiple new cards* (e.g., "generate 3 alternative versions," "break this down into steps as new cards"), use "---" on a new line to separate the content intended for each distinct card/output unit.
-    - Follow any specific output formatting instructions within the "User Request".
+    - Follow any specific output formatting instructions within the "User's Custom Instruction".
 - **Direct Output:** Avoid conversational wrappers unless the request specifically asks for a dialogue or explanation.
 `;
 
@@ -489,5 +550,6 @@ export const aiService = {
     generateContinuation,
     generateBreakdown,
     generateExpand,
-    generateCustom
+    generateCustom,
+    generateSummary
 };

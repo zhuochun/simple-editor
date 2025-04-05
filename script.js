@@ -303,12 +303,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-ai-actions ai-feature">
                      <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>⬇️</button>
-                     <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
-                     <button class="ai-breakdown-btn" title="Brainstorm (to next column)" ${!aiReady ? 'disabled' : ''}>🧠</button>
-                     <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
-                </div>
-                <div class="card-actions">
-                    <button class="add-child-btn" title="Add Child Card (to next column)">➕</button>
+                      <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
+                      <button class="ai-summarize-btn" title="Reduce (in this column)" ${!aiReady ? 'disabled' : ''}>⏪</button>
+                      <button class="ai-breakdown-btn" title="Brainstorm (to next column)" ${!aiReady ? 'disabled' : ''}>🧠</button>
+                      <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
+                 </div>
+                 <div class="card-actions">
+                     <button class="add-child-btn" title="Add Child Card (to next column)">➕</button>
                     <button class="delete-card-btn" title="Delete Card">🗑️</button>
                 </div>
             </div>
@@ -342,6 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardEl.querySelector('.ai-continue-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiContinue(cardData.id); });
         cardEl.querySelector('.ai-breakdown-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiBreakdown(cardData.id); });
         cardEl.querySelector('.ai-expand-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiExpand(cardData.id); });
+        cardEl.querySelector('.ai-summarize-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiSummarize(cardData.id); });
         cardEl.querySelector('.ai-custom-btn').addEventListener('click', (e) => { e.stopPropagation(); handleAiCustom(cardData.id); });
 
         return cardEl;
@@ -1064,11 +1066,80 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'Enter') { e.preventDefault(); finishEditing(true); }
             else if (e.key === 'Escape') { e.preventDefault(); finishEditing(false); }
         });
-    }
+     }
 
-    // --- AI Action Handlers ---
+     // --- AI Action Handlers ---
 
-    function handleAiContinue(cardId) {
+     function handleAiSummarize(cardId) {
+         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+         if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+
+         const card = data.getCard(cardId);
+         if (!card || !card.content?.trim()) { alert("Card has no content to summarize."); return; }
+
+         disableConflictingActions(); // Lock UI
+
+         // Find insertBeforeId for the new card (immediately after the current card)
+         let insertBeforeId = null;
+         const siblings = data.getSiblingCards(cardId);
+         const currentIndex = siblings.findIndex(c => c.id === cardId);
+         if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+             insertBeforeId = siblings[currentIndex + 1].id;
+         }
+
+         // Create the new placeholder card using handleAddCard
+         const newCardId = handleAddCard(card.columnIndex, card.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
+         if (!newCardId) {
+             enableConflictingActions(); // Unlock if card creation failed
+             return;
+         }
+
+         const newCardEl = getCardElement(newCardId);
+         const newTextarea = newCardEl?.querySelector('.card-content');
+         if (!newTextarea) {
+             console.error("Could not find textarea for new summary card:", newCardId);
+             // Update data directly if textarea not found
+             data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
+             data.saveProjectsData();
+             enableConflictingActions(); // Unlock if card creation failed
+             return;
+         }
+
+         // Call aiService, targeting the new card
+         aiService.generateSummary({
+             card: card, // Pass the original card for context (children, parent, etc.)
+             onChunk: (delta) => {
+                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
+                     newTextarea.value = ''; // Clear placeholder
+                 }
+                 newTextarea.value += delta;
+                 autoResizeTextarea({ target: newTextarea });
+             },
+             onError: (error) => {
+                newTextarea.value = `AI Error: ${error.message}`;
+                newTextarea.classList.remove('ai-loading');
+                // Update data model with error
+                data.updateCardContentData(newCardId, newTextarea.value);
+                data.saveProjectsData();
+                enableConflictingActions(); // Unlock UI on error
+             },
+             onDone: (finalContent) => {
+                 newTextarea.classList.remove('ai-loading');
+                 // Update the *new* card's data model with the final content
+                 if (data.updateCardContentData(newCardId, finalContent)) {
+                     data.saveProjectsData(); // Save the new card's content
+                     // Update the group header for the new card that created by AI
+                     updateGroupHeaderDisplay(newCardId);
+                 }
+                 enableConflictingActions(); // Unlock UI
+                 console.log(`AI Summarize completed. New card: ${newCardId}`);
+                 // Optionally focus the new card
+                 // focusCardTextarea(newCardId, 'end');
+             }
+         });
+     }
+
+     function handleAiContinue(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
         if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
 
@@ -1088,7 +1159,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Use handleAddCard to create placeholder and update DOM/Data
         // Pass currentCard's column and parentId
         const newCardId = handleAddCard(currentCard.columnIndex, currentCard.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
-        if (!newCardId) return;
+        if (!newCardId) {
+            enableConflictingActions(); // Unlock if card creation failed
+            return;
+        }
 
         const newCardEl = getCardElement(newCardId);
         const newTextarea = newCardEl?.querySelector('.card-content');
@@ -1097,6 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
              // Update data directly if textarea not found
              data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
              data.saveProjectsData();
+             enableConflictingActions(); // Unlock if card creation failed
              return;
         }
 
@@ -1123,8 +1198,8 @@ document.addEventListener('DOMContentLoaded', () => {
                  // Update data model with final content
                  if (data.updateCardContentData(newCardId, finalContent)) {
                      data.saveProjectsData();
-                     // Update the group header for the *original* card that triggered the AI
-                      updateGroupHeaderDisplay(currentCard.id);
+                     // Update the group header for the new card that created by AI
+                     updateGroupHeaderDisplay(newCardId);
                  }
                  enableConflictingActions(); // Unlock UI on success
                  console.log("AI Continue completed for card:", newCardId);
@@ -1146,7 +1221,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Create a single temporary placeholder using handleAddCard
         const tempCardId = handleAddCard(targetColumnIndex, parentIdForNewCards, AI_PLACEHOLDER_TEXT);
-        if (!tempCardId) return;
+        if (!tempCardId) {
+            enableConflictingActions(); // Unlock if card creation failed
+            return;
+        }
 
         const tempCardEl = getCardElement(tempCardId);
         const tempTextarea = tempCardEl?.querySelector('.card-content');
@@ -1154,6 +1232,7 @@ document.addEventListener('DOMContentLoaded', () => {
              console.error("Could not find textarea for temp AI card:", tempCardId);
              data.updateCardContentData(tempCardId, "Error: Could not find card textarea.");
              data.saveProjectsData();
+             enableConflictingActions(); // Unlock if card creation failed
              return;
         }
 
@@ -1225,11 +1304,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Final save after all potential modifications
                 data.saveProjectsData();
                 // Update the group header for the original card
-                updateGroupHeaderDisplay(card.id);
+                updateGroupHeaderDisplay(tempCardId);
                 console.log(`AI Breakdown completed for card ${cardId}.`);
 
-                if (lastCardId && data.getCard(lastCardId)) {
-                    requestAnimationFrame(() => scrollIntoViewIfNeeded(getCardElement(lastCardId)));
+                if (tempCardId && data.getCard(tempCardId)) {
+                    requestAnimationFrame(() => {
+                        focusCardTextarea(tempCardId, 'start'); // Use dedicated function, focus at start
+                    })
                 }
                 enableConflictingActions(); // Unlock UI on success
             }
@@ -1250,15 +1331,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Use handleAddCard to create placeholder
         const newCardId = handleAddCard(targetColumnIndex, parentIdForNewCard, AI_PLACEHOLDER_TEXT);
-        if (!newCardId) return;
+        if (!newCardId) {
+            enableConflictingActions(); // Unlock if card creation failed
+            return;
+        }
 
         const newCardEl = getCardElement(newCardId);
         const newTextarea = newCardEl?.querySelector('.card-content');
         if (!newTextarea) {
-             console.error("Could not find textarea for new AI card:", newCardId);
-             data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
-             data.saveProjectsData();
-             return;
+            console.error("Could not find textarea for new AI card:", newCardId);
+            data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
+            data.saveProjectsData();
+            enableConflictingActions(); // Unlock if card creation failed
+            return;
         }
 
         aiService.generateExpand({
@@ -1282,8 +1367,8 @@ document.addEventListener('DOMContentLoaded', () => {
                  // Update data model with final content
                  if (data.updateCardContentData(newCardId, finalContent)) { // Save final content
                      data.saveProjectsData();
-                     // Update the group header for the original card
-                      updateGroupHeaderDisplay(card.id);
+                     // Update the group header for the new card
+                     updateGroupHeaderDisplay(newCardId);
                  }
                  enableConflictingActions(); // Unlock UI on success
                  console.log("AI Expand completed for card:", newCardId);
@@ -1336,7 +1421,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Use handleAddCard for placeholder
             const placeholderCardId = handleAddCard(targetColumnIndex, parentIdForNewCard, AI_PLACEHOLDER_TEXT);
-            if (!placeholderCardId) return;
+            if (!placeholderCardId) {
+                enableConflictingActions(); // Unlock if card creation failed
+                return;
+            }
 
             const placeholderCardEl = getCardElement(placeholderCardId);
             const placeholderTextarea = placeholderCardEl?.querySelector('.card-content');
@@ -1344,6 +1432,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  console.error("Could not find textarea for new AI card:", placeholderCardId);
                  data.updateCardContentData(placeholderCardId, "Error: Could not find card textarea.");
                  data.saveProjectsData();
+                 enableConflictingActions(); // Unlock if card creation failed
                  return;
              }
 
@@ -1412,11 +1501,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     data.saveProjectsData(); // Final save
                     // Update the group header for the original card
-                    updateGroupHeaderDisplay(card.id);
+                    updateGroupHeaderDisplay(placeholderCardId);
                     console.log(`AI Custom completed for original card ${cardId}.`);
 
-                    if (lastCardId && data.getCard(lastCardId)) {
-                        requestAnimationFrame(() => scrollIntoViewIfNeeded(getCardElement(lastCardId)));
+                    if (placeholderCardId && data.getCard(placeholderCardId)) {
+                        requestAnimationFrame(() => {
+                            focusCardTextarea(placeholderCardId, 'start'); // Use dedicated function, focus at start
+                        });
                     }
                     enableConflictingActions(); // Unlock UI on success
                 }
