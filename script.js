@@ -549,20 +549,23 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const originalActiveId = data.activeProjectId; // Store the ID *before* deletion
         const deleteResult = data.deleteProjectData(projectIdToDelete); // Use data function
 
         if (deleteResult.deleted) {
             data.saveProjectsData(); // Save the deletion
             data.saveActiveProjectId(); // Save the potentially new active ID
 
-            // If the active project changed, reload and render
-            if (data.activeProjectId !== projectIdToDelete) {
-                 // Active project didn't change, just update list
-                 renderProjectList();
-            } else {
+            // Check if the *original* active project was the one deleted
+            if (originalActiveId === projectIdToDelete) {
                  // Active project *was* deleted, load the new one
+                 console.log(`Active project ${projectIdToDelete} deleted. Rendering new active project: ${data.activeProjectId}`);
                  renderApp(); // Render the new active project
-                 renderProjectList(); // Update sidebar highlighting
+                 renderProjectList(); // Update sidebar highlighting and active state
+            } else {
+                 // Active project didn't change, just update list
+                 console.log(`Non-active project ${projectIdToDelete} deleted. Updating project list.`);
+                 renderProjectList();
             }
         }
     }
