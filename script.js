@@ -341,37 +341,47 @@ document.addEventListener('DOMContentLoaded', () => {
         const cardsContainer = columnEl.querySelector('.cards-container');
         cardsContainer.innerHTML = ''; // Clear previous content
 
-        // Render Groups first (for columns > 0)
-        if (columnIndex > 0) {
-            const potentialParentCards = data.getColumnCards(columnIndex - 1); // Use data helper
-            potentialParentCards.forEach(parentCardData => {
-                 const groupEl = createGroupElement(parentCardData.id);
-                 if (!groupEl) return;
+        if (columnIndex === 0) {
+            // --- Render Root Cards for Column 0 ---
+            const rootCards = data.getColumnCards(0).filter(c => !c.parentId);
+            // Root cards are already sorted by order by getColumnCards
+            rootCards.forEach(cardData => {
+                const cardEl = createCardElement(cardData);
+                cardsContainer.appendChild(cardEl);
+            });
+        } else {
+            // --- Render Groups and Child Cards for Columns > 0 ---
+            // Get parents from the *previous* column, sorted by their order
+            const parentCards = data.getColumnCards(columnIndex - 1);
 
-                 const childCards = data.getChildCards(parentCardData.id, columnIndex); // Use data helper
-                 childCards.forEach(childCardData => {
-                     const cardEl = createCardElement(childCardData);
-                     groupEl.appendChild(cardEl);
-                 });
-                 // Always append the group element for potential parents.
-                 // Styling can hide empty groups if desired, but the structure is needed.
-                 cardsContainer.appendChild(groupEl);
-                 // Optimization: Could potentially create empty groups if needed for drag/drop,
-                 // but current dragDrop logic handles dropping into empty column space.
+            parentCards.forEach(parentCardData => {
+                // Create a group element for each parent from the previous column
+                const groupEl = createGroupElement(parentCardData.id);
+                if (!groupEl) {
+                    console.warn(`Failed to create group element for parent ${parentCardData.id} in column ${columnIndex}`);
+                    return; // Skip this parent if group creation fails
+                }
+
+                // Get children of this parent *in the current column*, sorted by their order
+                const childCards = data.getChildCards(parentCardData.id, columnIndex);
+
+                // If children exist, create their card elements and append to the group
+                if (childCards.length > 0) {
+                    childCards.forEach(childCardData => {
+                        const cardEl = createCardElement(childCardData);
+                        groupEl.appendChild(cardEl);
+                    });
+                }
+                // Else: The group will be empty, which is the desired behavior to show all parent groups
+
+                // Append the complete group (with or without children) to the container
+                cardsContainer.appendChild(groupEl);
             });
         }
 
-        // Render Root Cards (cards with no parent in this column)
-        const cardsInColumn = data.getColumnCards(columnIndex); // Use data helper
-        cardsInColumn.forEach(cardData => {
-            if (!cardData.parentId) {
-                 const cardEl = createCardElement(cardData);
-                 cardsContainer.appendChild(cardEl);
-            }
-        });
-
         updateToolbarButtons(columnEl, columnIndex);
     }
+
 
     function renderApp() {
         columnsContainer.innerHTML = '';
@@ -1417,16 +1427,37 @@ document.addEventListener('DOMContentLoaded', () => {
             // Provide necessary functions from data and script modules
             getCard: data.getCard,
             addCard: handleAddCard, // Use the UI handler
-            deleteCard: handleDeleteCard, // Use the UI handler
-            // For merge/split, provide data functions directly if UI handlers are too complex
-            deleteCardInternal: (cardId) => { // Wrapper for internal delete data + save
-                 const result = data.deleteCardData(cardId);
-                 if (result.deletedIds.length > 0) data.saveProjectsData();
+            deleteCard: handleDeleteCard, // Use the UI handler for standard delete
+            // For merge/split shortcuts, use wrappers that handle re-rendering
+            deleteCardInternal: (cardId) => {
+                 const result = data.deleteCardData(cardId); // Call data function
+                 if (result.deletedIds.length > 0) {
+                     // Remove elements immediately for responsiveness
+                     result.deletedIds.forEach(id => {
+                         getCardElement(id)?.remove();
+                         getGroupElement(id)?.remove();
+                     });
+                     // Re-render affected columns after data update
+                     result.affectedColumns.forEach(index => {
+                         const colEl = getColumnElementByIndex(index);
+                         if (colEl) renderColumnContent(colEl, index);
+                     });
+                     updateAllToolbarButtons(); // Update toolbars
+                     data.saveProjectsData(); // Save changes
+                 }
                  return result; // Return result for shortcut logic
             },
-            reparentChildren: (oldP, newP) => { // Wrapper for reparent data + save
-                 const result = data.reparentChildrenData(oldP, newP);
-                 if (result.success) data.saveProjectsData();
+            reparentChildren: (oldP, newP) => {
+                 const result = data.reparentChildrenData(oldP, newP); // Call data function
+                 if (result.success) {
+                     // Re-render affected columns after data update
+                     result.affectedColumns.forEach(index => {
+                         const colEl = getColumnElementByIndex(index);
+                         if (colEl) renderColumnContent(colEl, index);
+                     });
+                     updateAllToolbarButtons(); // Update toolbars
+                     data.saveProjectsData(); // Save changes
+                 }
                  return result; // Return result for shortcut logic
             },
             focusCardTextarea: focusCardTextarea, // UI helper

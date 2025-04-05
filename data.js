@@ -205,7 +205,6 @@ function loadProjectsData() {
     return { projectsData: projects, activeId: activeProjectId };
 }
 
-
 // --- Card & Column Data Helpers ---
 
 function getCard(id) {
@@ -233,8 +232,8 @@ function getColumnCards(columnIndex) {
                const bIsRoot = !b.parentId;
 
                if (aIsRoot && bIsRoot) return a.order - b.order;
-               if (aIsRoot) return -1;
-               if (bIsRoot) return 1;
+               if (aIsRoot) return -1; // shouldn't happen, root card cannot exists in columnIdx>0
+               if (bIsRoot) return 1; // shouldn't happen, root card cannot exists in columnIdx>0
                // Both children
                if (a.parentId === b.parentId) return a.order - b.order;
                // Different parents, sort by parent order
@@ -354,7 +353,8 @@ function addCardData(columnIndex, parentId = null, initialContent = '', insertBe
     const newCardId = generateId('card_');
     const newCard = {
         id: newCardId, name: null, content: initialContent, parentId: parentId,
-        columnIndex: columnIndex, order: 0, color: ''
+        columnIndex: columnIndex, order: 0, // Removed columnOrder initialization
+        color: ''
     };
 
     projectData.cards[newCardId] = newCard;
@@ -381,9 +381,9 @@ function addCardData(columnIndex, parentId = null, initialContent = '', insertBe
     } else { // Append
         newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
     }
-    newCard.order = newOrder;
+    newCard.order = newOrder; // Order within siblings
 
-    // Calculate Color
+    // Calculate Color (using standard order)
     newCard.color = getColorForCard(newCard);
 
     // Update other root card colors if a new root was added/reordered
@@ -554,12 +554,14 @@ function moveCardData(cardId, targetColumnIndex, newParentId, insertBeforeCardId
     } else { // Append
         newOrder = siblings.length > 0 ? Math.max(...siblings.map(c => c.order)) + 1 : 0;
     }
-    card.order = newOrder;
+    card.order = newOrder; // Order within its siblings
 
-    // Update Color
+    // Update Color (using standard order)
     card.color = getColorForCard(card);
 
-    // Update descendants
+    // Update descendants' column index and color
+    // Note: Recalculating descendant columnOrder here is complex.
+    // We rely on the rendering logic using the parent's columnOrder for groups.
     const columnDiff = targetColumnIndex - originalColumnIndex;
     const affectedDescendants = [];
     let maxDescendantCol = targetColumnIndex;
@@ -644,26 +646,47 @@ function reparentChildrenData(oldParentId, newParentId) {
     affectedColumns.add(newParentCard.columnIndex + 1); // New parent's group column
     childrenToMove.forEach(child => affectedColumns.add(child.columnIndex)); // Original child columns
 
-    childrenToMove.sort((a, b) => a.order - b.order);
+    childrenToMove.sort((a, b) => a.order - b.order); // Keep original relative order
 
-    const lastChildOrders = {};
+    // Determine the base order to insert after for each target column
+    const baseOrders = {};
+    const processedColumns = new Set();
+
+    childrenToMove.forEach(child => {
+        const targetChildColumnIndex = child.columnIndex;
+        if (!processedColumns.has(targetChildColumnIndex)) {
+            const existingSiblingsInTargetCol = getChildCards(newParentId, targetChildColumnIndex);
+            baseOrders[targetChildColumnIndex] = existingSiblingsInTargetCol.length > 0
+                ? Math.max(...existingSiblingsInTargetCol.map(c => c.order))
+                : -1; // Start before 0 if no existing children
+            processedColumns.add(targetChildColumnIndex);
+        }
+    });
+
+    // Assign new fractional orders
+    let lastAssignedOrder = {}; // Track last assigned order *within the moved block* per column
 
     childrenToMove.forEach(child => {
         const targetChildColumnIndex = child.columnIndex;
         affectedColumns.add(targetChildColumnIndex);
 
-        if (lastChildOrders[targetChildColumnIndex] === undefined) {
-             const existingSiblingsInTargetCol = getChildCards(newParentId, targetChildColumnIndex);
-             lastChildOrders[targetChildColumnIndex] = existingSiblingsInTargetCol.length > 0
-                 ? Math.max(...existingSiblingsInTargetCol.map(c => c.order))
-                 : -1;
-        }
+        // Get the order of the last existing sibling (or -1 if none)
+        const baseOrder = baseOrders[targetChildColumnIndex];
 
+        // Get the order of the previously assigned *moved* sibling in this column
+        const prevMovedOrder = lastAssignedOrder[targetChildColumnIndex] ?? baseOrder;
+
+        // Calculate new order between the previous moved card and 'infinity' (represented by +1)
+        // This effectively appends the block while maintaining internal order fractionally.
+        const nextOrder = prevMovedOrder + 1; // Simplified append logic for the block
+        child.order = (prevMovedOrder + nextOrder) / 2.0;
+        lastAssignedOrder[targetChildColumnIndex] = child.order; // Update last assigned order for this column
+
+        // Update parent and color
         child.parentId = newParentId;
-        lastChildOrders[targetChildColumnIndex] += 1;
-        child.order = lastChildOrders[targetChildColumnIndex];
-        child.color = getColorForCard(child);
+        child.color = getColorForCard(child); // Recalculate color based on new parentage and position
 
+        // Update descendants' colors
         const descendants = getDescendantIds(child.id);
         descendants.forEach(descId => {
             const descCard = projectData.cards[descId];
