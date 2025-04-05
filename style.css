@@ -465,20 +465,23 @@ body.ai-ready .ai-feature {
     transition: all 0.1s ease-out;
 }
 .card.drag-over-card {
-     box-shadow: 0 0 0 2px rgba(0, 100, 255, 0.5); /* Highlight card border */
+    box-shadow: 0 0 0 2px rgba(0, 100, 255, 0.5); /* Highlight card border */
 }
 .card-group.drag-over-group {
-     border: 2px dashed rgba(0, 100, 255, 0.7);
+    border: 2px dashed rgba(0, 100, 255, 0.7);
 }
 .cards-container.drag-over-empty {
-     background-color: rgba(0, 100, 255, 0.1); /* Highlight empty space */
+    background-color: rgba(0, 100, 255, 0.1); /* Highlight empty space */
 }
-
+.card.drag-over-parent {
+    border: 2px dashed rgba(0, 100, 255, 0.7);
+}
 
 /* --- Highlighting --- */
 .card.highlight {
-    background-color: #f8f8f8 !important; /* Light paper-like color */
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    background-color: #f8f8f8 !important;
+    /* Light paper-like color */
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border-color: #d4c9a8;
 }
 .card.editing {
