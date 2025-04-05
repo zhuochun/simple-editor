@@ -155,6 +155,42 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Updates the display text and title of a group header based on its parent card's data.
+     * @param {string} parentCardId - The ID of the card whose data determines the group header.
+     */
+    function updateGroupHeaderDisplay(parentCardId) {
+        const groupEl = getGroupElement(parentCardId);
+        if (!groupEl) return; // Group might not exist in the DOM yet
+
+        const parentCardData = data.getCard(parentCardId);
+        if (!parentCardData) return; // Parent card data not found
+
+        const groupHeaderContainer = groupEl.querySelector('.group-header');
+        if (!groupHeaderContainer) return; // Header element not found
+
+        let groupHeaderText = '';
+        let groupHeaderTitle = '';
+
+        if (parentCardData.name) {
+            const truncatedParentName = parentCardData.name.length > CARD_NAME_MAX_LENGTH ? parentCardData.name.substring(0, CARD_NAME_MAX_LENGTH) + '...' : parentCardData.name;
+            groupHeaderText = `>> ${truncatedParentName}`;
+            groupHeaderTitle = `Children of ${parentCardData.name}`;
+        } else {
+            const idPart = `#${parentCardId.slice(-4)}`;
+            const contentPreview = parentCardData.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
+            const ellipsis = (parentCardData.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
+            const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
+            groupHeaderText = `>> ${idPart}${previewText}`;
+            groupHeaderTitle = `Children of ${idPart}${contentPreview ? `: ${parentCardData.content?.trim()}` : ''}`;
+        }
+
+        groupHeaderContainer.textContent = groupHeaderText;
+        groupHeaderContainer.title = groupHeaderTitle;
+        // console.log(`Updated group header display for parent: ${parentCardId}`);
+    }
+
+
+    /**
      * Finds a card's textarea, focuses it, sets cursor position, and scrolls into view.
      * @param {string} cardId - The ID of the card to focus.
      * @param {'start' | 'end' | 'preserve' | number} [position='preserve'] - Cursor position.
@@ -879,23 +915,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (updated) {
             data.saveProjectsData(); // Save if content changed
             console.log(`Card ${cardId} content saved.`);
-
-            // Update parent group header if necessary (if parent has no name)
-            const cardData = data.getCard(cardId); // Get updated data
-            if (cardData && !cardData.name) {
-                const groupEl = getGroupElement(cardId);
-                if (groupEl) {
-                    const groupHeaderContainer = groupEl.querySelector('.group-header');
-                    if (groupHeaderContainer) {
-                        const idPart = `#${cardId.slice(-4)}`;
-                        const contentPreview = cardData.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
-                        const ellipsis = (cardData.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
-                        const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
-                        groupHeaderContainer.textContent = `>> ${idPart}${previewText}`;
-                        groupHeaderContainer.title = `Children of ${idPart}${contentPreview ? `: ${cardData.content?.trim()}` : ''}`;
-                    }
-                }
-            }
+            // Update the group header display for this card (if it acts as a parent)
+            updateGroupHeaderDisplay(cardId);
         }
         cardEl.classList.remove('editing');
         clearHighlights();
@@ -958,31 +979,8 @@ document.addEventListener('DOMContentLoaded', () => {
             nameDisplaySpan.textContent = truncatedDisplayName;
             nameDisplaySpan.title = displayName;
 
-            // Update parent group header if name changed
-            if (nameChanged) {
-                const groupEl = getGroupElement(cardId);
-                if (groupEl) {
-                     const groupHeaderContainer = groupEl.querySelector('.group-header');
-                     if (groupHeaderContainer) {
-                         let groupHeaderText = '';
-                         let groupHeaderTitle = '';
-                         if (finalCardData.name) {
-                             const truncatedParentName = finalCardData.name.length > CARD_NAME_MAX_LENGTH ? finalCardData.name.substring(0, CARD_NAME_MAX_LENGTH) + '...' : finalCardData.name;
-                             groupHeaderText = `>> ${truncatedParentName}`;
-                             groupHeaderTitle = `Children of ${finalCardData.name}`;
-                         } else {
-                             const idPart = `#${cardId.slice(-4)}`;
-                             const contentPreview = finalCardData.content?.trim().substring(0, GROUP_HEADER_PREVIEW_LENGTH) || '';
-                             const ellipsis = (finalCardData.content?.trim().length || 0) > GROUP_HEADER_PREVIEW_LENGTH ? '...' : '';
-                             const previewText = contentPreview ? `: ${contentPreview}${ellipsis}` : '';
-                             groupHeaderText = `>> ${idPart}${previewText}`;
-                             groupHeaderTitle = `Children of ${idPart}${contentPreview ? `: ${finalCardData.content?.trim()}` : ''}`;
-                         }
-                         groupHeaderContainer.textContent = groupHeaderText;
-                         groupHeaderContainer.title = groupHeaderTitle;
-                     }
-                }
-            }
+            // Update the group header display for this card (if it acts as a parent)
+            updateGroupHeaderDisplay(cardId);
 
             input.remove();
             nameDisplaySpan.style.display = '';
@@ -1031,7 +1029,6 @@ document.addEventListener('DOMContentLoaded', () => {
             onChunk: (delta) => {
                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';
-                    newTextarea.classList.remove('ai-loading');
                 }
                 newTextarea.value += delta;
                 autoResizeTextarea({ target: newTextarea });
@@ -1046,8 +1043,11 @@ document.addEventListener('DOMContentLoaded', () => {
             onDone: (finalContent) => {
                  newTextarea.classList.remove('ai-loading');
                  // Update data model with final content
-                 data.updateCardContentData(newCardId, finalContent);
-                 data.saveProjectsData();
+                 if (data.updateCardContentData(newCardId, finalContent)) {
+                     data.saveProjectsData();
+                     // Update the group header for the *original* card that triggered the AI
+                     updateGroupHeaderDisplay(currentCard.id);
+                 }
                  console.log("AI Continue completed for card:", newCardId);
             }
         });
@@ -1079,7 +1079,6 @@ document.addEventListener('DOMContentLoaded', () => {
             onChunk: (delta) => {
                  if (tempTextarea.value === AI_PLACEHOLDER_TEXT) {
                      tempTextarea.value = '';
-                     tempTextarea.classList.remove('ai-loading');
                  }
                  tempTextarea.value += delta;
                  autoResizeTextarea({ target: tempTextarea });
@@ -1141,6 +1140,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Final save after all potential modifications
                 data.saveProjectsData();
+                // Update the group header for the original card
+                updateGroupHeaderDisplay(card.id);
                 console.log(`AI Breakdown completed for card ${cardId}.`);
 
                 if (lastCardId && data.getCard(lastCardId)) {
@@ -1176,7 +1177,6 @@ document.addEventListener('DOMContentLoaded', () => {
             onChunk: (delta) => {
                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';
-                    newTextarea.classList.remove('ai-loading');
                 }
                 newTextarea.value += delta;
                 autoResizeTextarea({ target: newTextarea });
@@ -1189,8 +1189,12 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             onDone: (finalContent) => {
                  newTextarea.classList.remove('ai-loading');
-                 data.updateCardContentData(newCardId, finalContent); // Save final content
-                 data.saveProjectsData();
+                 // Update data model with final content
+                 if (data.updateCardContentData(newCardId, finalContent)) { // Save final content
+                     data.saveProjectsData();
+                     // Update the group header for the original card
+                     updateGroupHeaderDisplay(card.id);
+                 }
                  console.log("AI Expand completed for card:", newCardId);
             }
         });
@@ -1254,16 +1258,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 onChunk: (delta) => {
                     if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) {
                         placeholderTextarea.value = '';
-                         placeholderTextarea.classList.remove('ai-loading');
                     }
                     placeholderTextarea.value += delta;
                     autoResizeTextarea({ target: placeholderTextarea });
                 },
                 onError: (error) => {
                     placeholderTextarea.value = `AI Error: ${error.message}`;
-                     placeholderTextarea.classList.remove('ai-loading');
-                     data.updateCardContentData(placeholderCardId, placeholderTextarea.value); // Save error
-                     data.saveProjectsData();
+                    placeholderTextarea.classList.remove('ai-loading');
+                    data.updateCardContentData(placeholderCardId, placeholderTextarea.value); // Save error
+                    data.saveProjectsData();
                 },
                 onDone: (finalContent) => {
                     // Process potential multi-part response
@@ -1312,6 +1315,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     data.saveProjectsData(); // Final save
+                    // Update the group header for the original card
+                    updateGroupHeaderDisplay(card.id);
                     console.log(`AI Custom completed for original card ${cardId}.`);
 
                     if (lastCardId && data.getCard(lastCardId)) {
@@ -1459,6 +1464,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         textarea.value = newContent;
                         autoResizeTextarea({ target: textarea });
                     }
+                    // Update group header display after content update
+                    updateGroupHeaderDisplay(cardId);
                 }
             },
             renderColumnContent: renderColumnContent, // UI helper for re-rendering after merge/split

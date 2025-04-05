@@ -21,6 +21,10 @@ Maintain clarity, coherence, and consistency, always respecting the discrete, ca
 
 import * as data from './data.js'; // Import data module
 
+// --- Constants ---
+const NONE_TEXT = 'None';
+const CARD_SEPARATOR = '\n\n---\n\n';
+
 // --- State ---
 let aiSettings = { providerUrl: '', modelName: '', apiKey: '', isValid: false }; // Local cache
 let uiElements = {}; // To store references to UI elements
@@ -217,38 +221,86 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
     }
 }
 
-// --- AI Generation Functions ---
+// --- Helper Function for Context Gathering ---
 
-function generateContinuation({ card, onChunk, onError, onDone }) { // Accept card object
-    const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+/**
+ * Gathers context strings for a given card.
+ * @param {object} card - The card object.
+ * @returns {object} An object containing various context strings.
+ */
+function _getCardContext(card) {
+    const context = {
+        globalPrompt: data.getColumnData(0)?.prompt || NONE_TEXT,
+        columnPrompt: data.getColumnData(card.columnIndex)?.prompt || NONE_TEXT,
+        parentCardContent: NONE_TEXT,
+        currentCardContent: card.content || '',
+        precedingSiblingsContent: NONE_TEXT,
+        followingSiblingsContent: NONE_TEXT,
+        existingChildrenContent: NONE_TEXT,
+        targetColumnPrompt: NONE_TEXT,
+    };
 
-    // Card object is passed directly, no need to fetch
-    if (!card) {
-        onError(new Error(`Invalid card object provided for continuation.`));
-        return;
-    }
+    // Parent Context
+    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
+    context.parentCardContent = parentCard?.content || `${NONE_TEXT} (This is a root card)`;
 
-    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
-    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None'; // Use card.columnIndex
-    const parentCard = card.parentId ? data.getCard(card.parentId) : null; // Still need to fetch parent
-    const parentCardContent = parentCard?.content || 'None (This is a root card)';
-    const currentCardContent = card.content || ''; // Use card.content
+    // Sibling Context
+    const siblings = data.getSiblingCards(card.id);
+    const precedingSiblings = siblings.filter(c => c.order < card.order);
+    const followingSiblings = siblings.filter(c => c.order > card.order);
 
-    const siblings = data.getSiblingCards(card.id); // Use card.id
-    const cardsAbove = siblings.filter(c => c.order < card.order); // Use card.order
-    // Filter for non-empty trimmed content before mapping and joining
-    const cardsAboveContent = cardsAbove
+    context.precedingSiblingsContent = precedingSiblings
         .filter(c => c.content && c.content.trim())
         .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+        .join(CARD_SEPARATOR) || NONE_TEXT;
 
-    // Construct the prompt
-    let userPromptContent = `## Overall Document Context\n\n${globalPrompt}\n\n`;
-    userPromptContent += `## Current Column Context\n\n${columnPrompt}\n\n`;
-    userPromptContent += `## Parent Card Content (Hierarchical Context)\n\n${parentCardContent}\n\n`;
-    userPromptContent += `## Preceding Sibling Cards Content (Sequence Context)\n\n${cardsAboveContent}\n\n`;
-    userPromptContent += `## Current Card Content (The anchor to continue from)\n\n${currentCardContent}\n\n`;
-    userPromptContent += `## Task
+    context.followingSiblingsContent = followingSiblings
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join(CARD_SEPARATOR) || NONE_TEXT;
+
+    // Child Context
+    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
+    context.existingChildrenContent = childCards
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join(CARD_SEPARATOR) || NONE_TEXT;
+
+    // Target Column Prompt (for next column)
+    context.targetColumnPrompt = data.getColumnData(card.columnIndex + 1)?.prompt || NONE_TEXT;
+
+    return context;
+}
+
+
+// --- AI Generation Functions ---
+
+function generateContinuation({ card, onChunk, onError, onDone }) {
+    const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+    const context = _getCardContext(card);
+
+    // Construct the prompt using fetched context
+    let userPromptContent = `# Overall Document Context
+
+${context.globalPrompt}
+
+# Current Column Context
+
+${context.columnPrompt}
+
+# Hierarchical Context -- Parent Card Content
+
+${context.parentCardContent}
+
+# Sequence Context (Cards preceding the current one under the same parent) -- Preceding Sibling Cards Content
+
+${context.precedingSiblingsContent}
+
+# Anchor Card (The card to continue FROM) -- Current Card Content
+
+${context.currentCardContent}
+
+## Task
 
 Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Current Card Content".
 This new card will be placed immediately after the current card, within the same column and under the same parent (as the next sibling).
@@ -266,145 +318,163 @@ Focus on:
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateBreakdown({ card, onChunk, onError, onDone }) { // Accept card object
+function generateBreakdown({ card, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+    const context = _getCardContext(card);
 
-    // Card object is passed directly, no need to fetch
-    if (!card) {
-        onError(new Error(`Invalid card object provided for breakdown.`));
-        return;
-    }
+    // Construct the prompt using fetched context
+    let userPromptContent = `# Overall Document Context
 
-    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
-    const sourceColumnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None'; // Use card.columnIndex
-    const parentCard = card.parentId ? data.getCard(card.parentId) : null; // Still need to fetch parent
-    const parentCardContent = parentCard?.content || 'None (Source Card is a root card)';
-    const currentCardContent = card.content || ''; // Use card.content
+${context.globalPrompt}
 
-    const childCards = data.getChildCards(card.id, card.columnIndex + 1); // Use card.id, card.columnIndex
-    // Filter for non-empty trimmed content before mapping and joining
-    const existingChildrenContent = childCards
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+# Source Card's Column Context
 
-    const targetColumnPrompt = data.getColumnData(card.columnIndex + 1)?.prompt || 'None'; // Use card.columnIndex
+${context.columnPrompt}
 
-    // Construct the prompt
-    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
-    userPromptContent += `# Source Card's Column Context\nSource Column Prompt: ${sourceColumnPrompt}\n\n`;
-    userPromptContent += `# Hierarchical Context\nGrandparent Card Content (Parent of the Source Card):\n${parentCardContent}\n\n`;
-    userPromptContent += `# Source Card (The card to brainstorm FROM)\nSource Card Content:\n${currentCardContent}\n\n`;
-    userPromptContent += `# Existing Children Context (Current children of the Source Card)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
-    userPromptContent += `# Target Column Context (Where the new child cards will be placed)\nTarget Column Prompt: ${targetColumnPrompt}\n\n`;
-    userPromptContent += `# Task\n\nBased on the "Source Card Content" and all the provided context, brainstorm and generate the text content for *multiple new child cards*. These new cards will be placed in the next column (Target Column) as direct children of the Source Card.\n\nFocus on:\n- Generating distinct ideas or sub-topics derived from the "Source Card Content".\n- Ensuring each new child card logically follows from the Source Card.\n- Maintaining coherence with the overall document structure and prompts (Global, Source Column, Target Column).\n- Considering the "Existing Child Cards Content" to avoid redundancy and potentially build upon them or explore different facets.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the text for the new child cards. Separate the content for each new card with "---" on its own line.`;
+# Hierarchical Context -- Grandparent Card Content (Parent of the Source Card)
+
+${context.parentCardContent}
+
+# Source Card (The card to brainstorm FROM) -- Source Card Content
+
+${context.currentCardContent}
+
+# Existing Children Context (Current children of the Source Card) -- Existing Child Cards Content
+
+${context.existingChildrenContent}
+
+# Target Column Context (Where the new child cards will be placed)
+
+${context.targetColumnPrompt}
+
+# Task: Brainstorm Child Cards
+
+Based on the "Source Card Content" and all provided context, brainstorm and generate the text content for **multiple distinct child cards**.
+
+Focus on:
+- **Elaboration/Decomposition:** Each generated child card should explore, detail, break down, or provide examples/evidence related to a specific aspect of the "Source Card Content".
+- **Relevance & Coherence:** Ideas must be directly relevant to the Source Card and coherent with the Grandparent Card content and any specified Global/Column Prompts.
+- **Novelty (Consider Existing Children):** Aim to generate *new* insights or directions that complement or logically follow any "Existing Child Cards Content", rather than repeating them. If no children exist, generate foundational ideas.
+- **Adherence to Target Context:** Pay close attention to the "Target Column Prompt" if provided, as it may dictate the specific *purpose* or *type* of child cards required (e.g., arguments, steps, examples).
+- **Writing Style:** Maintain a style consistent with the Source Card and any overarching style guides (Global/Column Prompts), unless the Target Column Prompt suggests a different style for the children.
+- **Output Format:** Generate content for **each** proposed child card separately. Use "---" on a new line as a delimiter between the content for each distinct child card idea.
+- **Direct Output:** Output *only* the text for the new cards, separated by "---". Do not include introductions or summaries.
+`;
 
     messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateExpand({ card, onChunk, onError, onDone }) { // Accept card object
+function generateExpand({ card, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+    const context = _getCardContext(card);
 
-    // Card object is passed directly
-    if (!card) {
-        onError(new Error(`Invalid card object provided for expand.`));
-        return;
-    }
+    // Construct the prompt using fetched context
+    let userPromptContent = `# Overall Document Context
 
-    // Fetch context
-    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
-    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None';
-    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
-    const parentCardContent = parentCard?.content || 'None (This is a root card)';
-    const currentCardContent = card.content || '';
+${context.globalPrompt}
 
-    const siblings = data.getSiblingCards(card.id);
-    const precedingSiblings = siblings.filter(c => c.order < card.order);
-    const followingSiblings = siblings.filter(c => c.order > card.order);
+# Current Column Context
 
-    const precedingSiblingsContent = precedingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+${context.columnPrompt}
 
-    const followingSiblingsContent = followingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+# Hierarchical Context (Upwards and Sideways)
 
-    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
-    const existingChildrenContent = childCards
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+## Parent Card Content
 
-    // Construct the prompt
-    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
-    userPromptContent += `# Current Column Context\nColumn Prompt: ${columnPrompt}\n\n`;
-    userPromptContent += `# Hierarchical Context (Upwards and Sideways)\nParent Card Content:\n${parentCardContent}\n\n`;
-    userPromptContent += `Preceding Sibling Cards Content:\n${precedingSiblingsContent}\n\n`;
-    userPromptContent += `Following Sibling Cards Content:\n${followingSiblingsContent}\n\n`;
-    userPromptContent += `# Card to Enrich (The Original Content)\nCurrent Card Content (Original):\n${currentCardContent}\n\n`;
-    userPromptContent += `# Hierarchical Context (Downwards)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
-    userPromptContent += `# Task\n\nBased on the "Current Card Content (Original)" and all the surrounding context (prompts, parent, siblings, children), generate the text content for a *single new child card*. This new card should be a significantly enriched and expanded version of the "Current Card Content (Original)".\n\nFocus on:\n- Elaborating on the ideas presented in the original card.\n- Adding relevant details, examples, explanations, or descriptions.\n- Maintaining coherence with all provided context (parent, siblings, children, prompts).\n- Ensuring the new card logically follows as a detailed exploration of the original card's topic.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the text for the new, expanded child card.`;
+${context.parentCardContent}
+
+## Preceding Sibling Cards Content
+
+${context.precedingSiblingsContent}
+
+## Following Sibling Cards Content
+
+${context.followingSiblingsContent}
+
+# Card to Enrich (The Original Content) -- Current Card Content (Original)
+
+${context.currentCardContent}
+
+# Hierarchical Context (Downwards) -- Existing Child Cards Content
+
+${context.existingChildrenContent}
+
+# Task: Enrich Current Card
+
+Rewrite the "Current Card Content (Original)" to create a **significantly longer and more detailed version**. The goal is to enhance and expand upon the existing ideas within the scope of this single card.
+
+Focus on:
+- **Adding Depth:** Incorporate relevant supporting details, examples, explanations, descriptions, definitions, context, or narrative elements that elaborate on the original points.
+- **Maintaining Focus:** Ensure all added content directly relates to and expands upon the core subject matter established in the "Current Card Content (Original)". Do not introduce entirely new, unrelated topics.
+- **Coherence & Flow:** The enriched content must remain consistent with the "Parent Card Content" and the overall document context (Global/Column Prompts). It should also flow logically *from* the "Preceding Sibling Cards Content" and provide a smooth transition *towards* the "Following Sibling Cards Content" (if it exists).
+- **Supporting Children:** If "Existing Child Cards Content" is provided, the enriched version should ideally provide a stronger foundation or smoother transition into those child topics.
+- **Writing Style:** Analyze and maintain the established writing style (tone, voice, vocabulary, formality) evident in the surrounding context (Parent, Siblings, Original Content), unless specific style instructions exist in the prompts.
+- **Direct Output:** Output *only* the complete, enriched text intended to replace the original content of the current card. Do not include introductions, summaries, or the original text unless it's part of the rewritten version.
+`;
 
     messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateCustom({ card, userPrompt, onChunk, onError, onDone }) { // Accept card object and userPrompt
+function generateCustom({ card, userPrompt, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
+    const context = _getCardContext(card);
 
-    // Card object is passed directly
-    if (!card) {
-        onError(new Error(`Invalid card object provided for custom prompt.`));
-        return;
-    }
-    if (!userPrompt || !userPrompt.trim()) {
-        onError(new Error(`User prompt cannot be empty.`));
-        return;
-    }
+    // Construct the prompt using fetched context and the user's specific request
+    let userPromptContent = `# Overall Document Context
 
-    // Fetch context
-    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
-    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None';
-    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
-    const parentCardContent = parentCard?.content || 'None (This is a root card)';
-    const currentCardContent = card.content || '';
+${context.globalPrompt}
 
-    const siblings = data.getSiblingCards(card.id);
-    const precedingSiblings = siblings.filter(c => c.order < card.order);
-    const followingSiblings = siblings.filter(c => c.order > card.order);
+# Current Column Context
 
-    const precedingSiblingsContent = precedingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+${context.columnPrompt}
 
-    const followingSiblingsContent = followingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+# Hierarchical Context (Upwards and Sideways)
 
-    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
-    const existingChildrenContent = childCards
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join('\n\n---\n\n') || 'None';
+## Parent Card Content
 
-    // Construct the prompt
-    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
-    userPromptContent += `# Current Column Context\nColumn Prompt: ${columnPrompt}\n\n`;
-    userPromptContent += `# Hierarchical Context (Upwards and Sideways)\nParent Card Content:\n${parentCardContent}\n\n`;
-    userPromptContent += `Preceding Sibling Cards Content:\n${precedingSiblingsContent}\n\n`;
-    userPromptContent += `Following Sibling Cards Content:\n${followingSiblingsContent}\n\n`;
-    userPromptContent += `# Primary Subject Card\nCurrent Card Content:\n${currentCardContent}\n\n`;
-    userPromptContent += `# Hierarchical Context (Downwards)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
-    userPromptContent += `# User's Custom Instruction\nUser Request:\n${userPrompt}\n\n`; // Include the user's specific prompt
-    userPromptContent += `# Task\n\nBased *primarily* on the "User Request" and the "Primary Subject Card", generate appropriate text content. Use the surrounding context (prompts, parent, siblings, children) to ensure the response is coherent and fits the overall document structure and style.\n\nFocus on:\n- Directly addressing the "User Request".\n- Using the "Primary Subject Card" content as the main input for the request.\n- Maintaining coherence with all provided context.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the requested text content. If the request implies multiple distinct outputs (e.g., "list three ideas"), separate them with "---" on its own line.`;
+${context.parentCardContent}
+
+## Preceding Sibling Cards Content
+
+${context.precedingSiblingsContent}
+
+## Following Sibling Cards Content
+
+${context.followingSiblingsContent}
+
+# Primary Subject Card -- Current Card Content
+
+${context.currentCardContent}
+
+# Hierarchical Context (Downwards) -- Existing Child Cards Content
+
+${context.existingChildrenContent}
+
+# User's Custom Instruction
+
+User Request:${userPrompt}
+
+# Task: Execute Custom Instruction
+
+Carefully analyze the "User Request" and execute it based on the "Current Card Content" and all the surrounding context provided.
+
+Focus on:
+- **Understanding Intent:** Interpret the "User Request" accurately within the provided context.
+- **Applying Instruction:** Apply the instruction primarily to the "Current Card Content" unless the request clearly specifies otherwise (e.g., comparing it to siblings, summarizing children, generating new related cards).
+- **Contextual Consistency:** Ensure the output remains coherent with the Parent, Siblings, Children, and Global/Column Prompts, *unless* the "User Request" explicitly requires deviation (e.g., "rewrite this in a completely different style," "find contradictions with the parent card").
+- **Style Adherence:** Maintain the established writing style found in the context, unless the "User Request" specifies a change.
+- **Output Format:**
+    - Generate plain text only.
+    - If the request implies modifying the current card (e.g., "rewrite," "shorten," "add examples to this"), output the complete new text intended to replace the "Current Card Content".
+    - If the request asks for analysis, information, or suggestions *about* the card, provide that information directly.
+    - If the request explicitly asks for *multiple new cards* (e.g., "generate 3 alternative versions," "break this down into steps as new cards"), use "---" on a new line to separate the content intended for each distinct card/output unit.
+    - Follow any specific output formatting instructions within the "User Request".
+- **Direct Output:** Avoid conversational wrappers unless the request specifically asks for a dialogue or explanation.
+`;
 
     messages.push({ role: "user", content: userPromptContent });
 
