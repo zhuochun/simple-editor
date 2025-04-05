@@ -1377,17 +1377,30 @@ document.addEventListener('DOMContentLoaded', () => {
         const dataHelpersForDragDrop = {
             getCard: data.getCard,
             moveCardData: (cardId, targetCol, targetParent, insertBefore) => {
-                // Wrapper to handle UI update after data move
-                const moveResult = data.moveCardData(cardId, targetCol, targetParent, insertBefore);
-                if (moveResult.success) {
-                    // Re-render affected columns
-                    moveResult.affectedColumns.forEach(index => {
-                        const colEl = getColumnElementByIndex(index);
-                        if (colEl) renderColumnContent(colEl, index);
-                    });
-                    updateAllToolbarButtons();
-                    data.saveProjectsData(); // Save after successful move and render
-                } else {
+                 // Wrapper to handle UI update after data move
+                 const moveResult = data.moveCardData(cardId, targetCol, targetParent, insertBefore);
+                 if (moveResult.success) {
+                     // Check if the move requires rendering columns that might not exist in the DOM yet
+                     const maxAffectedIndex = moveResult.affectedColumns.length > 0 ? Math.max(...moveResult.affectedColumns) : -1;
+                     const currentDomColumns = columnsContainer.children.length;
+
+                     if (maxAffectedIndex >= currentDomColumns) {
+                         // If the move affects a column index equal to or greater than the current number
+                         // of columns in the DOM, a full re-render is needed to create the new column structure.
+                         console.log(`Card move affects column ${maxAffectedIndex}, which might require adding columns. Triggering full renderApp().`);
+                         renderApp(); // Full re-render
+                     } else {
+                         // Otherwise, just re-render the content of the affected columns that already exist.
+                         console.log(`Card move affects existing columns: ${moveResult.affectedColumns.join(', ')}. Triggering renderColumnContent() for each.`);
+                         moveResult.affectedColumns.forEach(index => {
+                             const colEl = getColumnElementByIndex(index);
+                             if (colEl) renderColumnContent(colEl, index);
+                         });
+                     }
+
+                     updateAllToolbarButtons();
+                     data.saveProjectsData(); // Save after successful move and render
+                 } else {
                     console.error("Card move failed:", moveResult.reason);
                     // Optionally provide user feedback
                 }
