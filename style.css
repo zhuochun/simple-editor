@@ -42,10 +42,24 @@ body {
     cursor: pointer; /* Change cursor to pointer for clicking */
     height: 100%;
     flex-shrink: 0;
-    transition: background-color 0.2s ease; /* Add transition */
+    transition: background-color 0.1s ease, width 0.1s ease; /* Added width transition */
+    display: flex; /* Enable flex for centering */
+    align-items: center; /* Center icon vertically */
+    justify-content: center; /* Center icon horizontally */
+    overflow: hidden; /* Hide icon overflow if width is too small */
+}
+#resizer::before {
+    content: '⋮'; /* Default icon (vertical ellipsis) */
+    font-size: 1.2em;
+    color: #888; /* Icon color */
+    line-height: 0; /* Adjust vertical alignment */
+    transition: color 0.1s ease, content 0.1s ease; /* Smooth transitions */
 }
 #resizer:hover {
     background-color: #aaa;
+}
+#resizer:hover::before {
+    color: #fff; /* White icon on hover */
 }
 
 /* --- Sidebar Collapsed State --- */
@@ -60,7 +74,13 @@ body.sidebar-collapsed #sidebar {
 
 body.sidebar-collapsed #resizer {
     width: 9px;
+    cursor: pointer; /* Change back to pointer when collapsed */
 }
+body.sidebar-collapsed #resizer::before {
+    content: '»'; /* Expand icon when collapsed */
+    font-size: 1.3em;
+}
+
 
 #main-content {
     flex-grow: 1;
