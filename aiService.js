@@ -219,25 +219,28 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
 
 // --- AI Generation Functions ---
 
-function generateContinuation({ cardId, onChunk, onError, onDone }) {
+function generateContinuation({ card, onChunk, onError, onDone }) { // Accept card object
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
 
-    // Fetch context using data module functions
-    const currentCard = data.getCard(cardId);
-    if (!currentCard) {
-        onError(new Error(`Card with ID ${cardId} not found.`));
+    // Card object is passed directly, no need to fetch
+    if (!card) {
+        onError(new Error(`Invalid card object provided for continuation.`));
         return;
     }
 
     const globalPrompt = data.getColumnData(0)?.prompt || 'None';
-    const columnPrompt = data.getColumnData(currentCard.columnIndex)?.prompt || 'None';
-    const parentCard = currentCard.parentId ? data.getCard(currentCard.parentId) : null;
+    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None'; // Use card.columnIndex
+    const parentCard = card.parentId ? data.getCard(card.parentId) : null; // Still need to fetch parent
     const parentCardContent = parentCard?.content || 'None (This is a root card)';
-    const currentCardContent = currentCard.content || '';
+    const currentCardContent = card.content || ''; // Use card.content
 
-    const siblings = data.getSiblingCards(cardId);
-    const cardsAbove = siblings.filter(c => c.order < currentCard.order);
-    const cardsAboveContent = cardsAbove.filter(c => !!c.content).map(c => c.content.trim()).join('\n\n---\n\n') || 'None';
+    const siblings = data.getSiblingCards(card.id); // Use card.id
+    const cardsAbove = siblings.filter(c => c.order < card.order); // Use card.order
+    // Filter for non-empty trimmed content before mapping and joining
+    const cardsAboveContent = cardsAbove
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
 
     // Construct the prompt
     let userPromptContent = `## Overall Document Context\n\n${globalPrompt}\n\n`;
@@ -245,7 +248,6 @@ function generateContinuation({ cardId, onChunk, onError, onDone }) {
     userPromptContent += `## Parent Card Content (Hierarchical Context)\n\n${parentCardContent}\n\n`;
     userPromptContent += `## Preceding Sibling Cards Content (Sequence Context)\n\n${cardsAboveContent}\n\n`;
     userPromptContent += `## Current Card Content (The anchor to continue from)\n\n${currentCardContent}\n\n`;
-
     userPromptContent += `## Task
 
 Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Current Card Content".
@@ -264,35 +266,56 @@ Focus on:
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateBreakdown({ cardContent, onChunk, onError, onDone }) {
+function generateBreakdown({ card, onChunk, onError, onDone }) { // Accept card object
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    messages.push({
-        role: "user",
-        content: `## Current Card\n\n${cardContent}\n\n## Instruction\n\nExpand the current card by brainstorming multiple child cards.
-Each child card should build on the ideas in the current card, remain consistent with the overall context, and offer new insights or directions.
-Please clearly separate each card using "---" as a delimiter.`
-    });
+
+    // Card object is passed directly, no need to fetch
+    if (!card) {
+        onError(new Error(`Invalid card object provided for breakdown.`));
+        return;
+    }
+
+    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
+    const sourceColumnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None'; // Use card.columnIndex
+    const parentCard = card.parentId ? data.getCard(card.parentId) : null; // Still need to fetch parent
+    const parentCardContent = parentCard?.content || 'None (Source Card is a root card)';
+    const currentCardContent = card.content || ''; // Use card.content
+
+    const childCards = data.getChildCards(card.id, card.columnIndex + 1); // Use card.id, card.columnIndex
+    // Filter for non-empty trimmed content before mapping and joining
+    const existingChildrenContent = childCards
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    const targetColumnPrompt = data.getColumnData(card.columnIndex + 1)?.prompt || 'None'; // Use card.columnIndex
+
+    // Construct the prompt
+    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
+    userPromptContent += `# Source Card's Column Context\nSource Column Prompt: ${sourceColumnPrompt}\n\n`;
+    userPromptContent += `# Hierarchical Context\nGrandparent Card Content (Parent of the Source Card):\n${parentCardContent}\n\n`;
+    userPromptContent += `# Source Card (The card to brainstorm FROM)\nSource Card Content:\n${currentCardContent}\n\n`;
+    userPromptContent += `# Existing Children Context (Current children of the Source Card)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
+    userPromptContent += `# Target Column Context (Where the new child cards will be placed)\nTarget Column Prompt: ${targetColumnPrompt}\n\n`;
+    userPromptContent += `# Task\n\nBased on the "Source Card Content" and all the provided context, brainstorm and generate the text content for *multiple new child cards*. These new cards will be placed in the next column (Target Column) as direct children of the Source Card.\n\nFocus on:\n- Generating distinct ideas or sub-topics derived from the "Source Card Content".\n- Ensuring each new child card logically follows from the Source Card.\n- Maintaining coherence with the overall document structure and prompts (Global, Source Column, Target Column).\n- Considering the "Existing Child Cards Content" to avoid redundancy and potentially build upon them or explore different facets.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the text for the new child cards. Separate the content for each new card with "---" on its own line.`;
+
+    messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
 function generateExpand({ cardContent, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    messages.push({
-        role: "user",
-        content: `## Current Card\n\n${cardContent}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version.
-Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`
-    });
+    const userPromptContent = `## Current Card\n\n${cardContent}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version. Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`;
+    messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
 function generateCustom({ cardContent, userPrompt, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    messages.push({
-        role: "user",
-        content: `## Current Card\n\n${cardContent}\n\n## Instruction\n\n${userPrompt}`
-    });
+    const userPromptContent = `## Current Card\n\n${cardContent}\n\n## Instruction\n\n${userPrompt}`;
+    messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }

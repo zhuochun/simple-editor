@@ -1025,9 +1025,9 @@ document.addEventListener('DOMContentLoaded', () => {
              return;
         }
 
-        // Call aiService, passing only the cardId and callbacks
+        // Call aiService, passing the card object and callbacks
         aiService.generateContinuation({
-            cardId: cardId, // Pass the ID of the card *before* which the AI should continue
+            card: currentCard, // Pass the full card object
             onChunk: (delta) => {
                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';
@@ -1075,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         aiService.generateBreakdown({
-            cardContent: card.content,
+            card: card, // Pass the full card object
             onChunk: (delta) => {
                  if (tempTextarea.value === AI_PLACEHOLDER_TEXT) {
                      tempTextarea.value = '';
