@@ -1172,7 +1172,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         aiService.generateExpand({
-            cardContent: card.content,
+            card: card, // Pass the full card object
             onChunk: (delta) => {
                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';

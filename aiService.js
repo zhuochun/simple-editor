@@ -304,9 +304,52 @@ function generateBreakdown({ card, onChunk, onError, onDone }) { // Accept card 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateExpand({ cardContent, onChunk, onError, onDone }) {
+function generateExpand({ card, onChunk, onError, onDone }) { // Accept card object
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const userPromptContent = `## Current Card\n\n${cardContent}\n\n## Instruction\n\nEnrich and expand the details of the current card by writing a longer, more detailed version. Include additional context, descriptive elements, and insights that deepen the narrative while staying true to the overall context.`;
+
+    // Card object is passed directly
+    if (!card) {
+        onError(new Error(`Invalid card object provided for expand.`));
+        return;
+    }
+
+    // Fetch context
+    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
+    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None';
+    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
+    const parentCardContent = parentCard?.content || 'None (This is a root card)';
+    const currentCardContent = card.content || '';
+
+    const siblings = data.getSiblingCards(card.id);
+    const precedingSiblings = siblings.filter(c => c.order < card.order);
+    const followingSiblings = siblings.filter(c => c.order > card.order);
+
+    const precedingSiblingsContent = precedingSiblings
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    const followingSiblingsContent = followingSiblings
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
+    const existingChildrenContent = childCards
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    // Construct the prompt
+    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
+    userPromptContent += `# Current Column Context\nColumn Prompt: ${columnPrompt}\n\n`;
+    userPromptContent += `# Hierarchical Context (Upwards and Sideways)\nParent Card Content:\n${parentCardContent}\n\n`;
+    userPromptContent += `Preceding Sibling Cards Content:\n${precedingSiblingsContent}\n\n`;
+    userPromptContent += `Following Sibling Cards Content:\n${followingSiblingsContent}\n\n`;
+    userPromptContent += `# Card to Enrich (The Original Content)\nCurrent Card Content (Original):\n${currentCardContent}\n\n`;
+    userPromptContent += `# Hierarchical Context (Downwards)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
+    userPromptContent += `# Task\n\nBased on the "Current Card Content (Original)" and all the surrounding context (prompts, parent, siblings, children), generate the text content for a *single new child card*. This new card should be a significantly enriched and expanded version of the "Current Card Content (Original)".\n\nFocus on:\n- Elaborating on the ideas presented in the original card.\n- Adding relevant details, examples, explanations, or descriptions.\n- Maintaining coherence with all provided context (parent, siblings, children, prompts).\n- Ensuring the new card logically follows as a detailed exploration of the original card's topic.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the text for the new, expanded child card.`;
+
     messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
