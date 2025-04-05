@@ -22,6 +22,20 @@ Model Name:
 - OpenAI: `GPT-4o-mini` (From [Models](https://platform.openai.com/docs/models))
 - OpenRouter: `deepseek/deepseek-chat-v3-0324:free` (From [Models](https://openrouter.ai/models))
 
+## Run Locally
+
+Install `nvm` and then Node.js:
+
+- Check the official `nvm` repository for the latest installation: [https://github.com/nvm-sh/nvm](https://github.com/nvm-sh/nvm)
+- Install a specific version of Node.js:
+
+``` bash
+nvm install --lts
+nvm use --lts
+```
+
+Run `npx serve`: You can then open your web browser and navigate to that address.
+
 ## Credits
 
 Built with vibe by [Zhuochun](https://github.com/zhuochun) together with Gemini 2.5 Pro 🪄.
