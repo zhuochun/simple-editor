@@ -355,9 +355,57 @@ function generateExpand({ card, onChunk, onError, onDone }) { // Accept card obj
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateCustom({ cardContent, userPrompt, onChunk, onError, onDone }) {
+function generateCustom({ card, userPrompt, onChunk, onError, onDone }) { // Accept card object and userPrompt
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const userPromptContent = `## Current Card\n\n${cardContent}\n\n## Instruction\n\n${userPrompt}`;
+
+    // Card object is passed directly
+    if (!card) {
+        onError(new Error(`Invalid card object provided for custom prompt.`));
+        return;
+    }
+    if (!userPrompt || !userPrompt.trim()) {
+        onError(new Error(`User prompt cannot be empty.`));
+        return;
+    }
+
+    // Fetch context
+    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
+    const columnPrompt = data.getColumnData(card.columnIndex)?.prompt || 'None';
+    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
+    const parentCardContent = parentCard?.content || 'None (This is a root card)';
+    const currentCardContent = card.content || '';
+
+    const siblings = data.getSiblingCards(card.id);
+    const precedingSiblings = siblings.filter(c => c.order < card.order);
+    const followingSiblings = siblings.filter(c => c.order > card.order);
+
+    const precedingSiblingsContent = precedingSiblings
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    const followingSiblingsContent = followingSiblings
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
+    const existingChildrenContent = childCards
+        .filter(c => c.content && c.content.trim())
+        .map(c => c.content.trim())
+        .join('\n\n---\n\n') || 'None';
+
+    // Construct the prompt
+    let userPromptContent = `# Overall Document Context\nGlobal Prompt: ${globalPrompt}\n\n`;
+    userPromptContent += `# Current Column Context\nColumn Prompt: ${columnPrompt}\n\n`;
+    userPromptContent += `# Hierarchical Context (Upwards and Sideways)\nParent Card Content:\n${parentCardContent}\n\n`;
+    userPromptContent += `Preceding Sibling Cards Content:\n${precedingSiblingsContent}\n\n`;
+    userPromptContent += `Following Sibling Cards Content:\n${followingSiblingsContent}\n\n`;
+    userPromptContent += `# Primary Subject Card\nCurrent Card Content:\n${currentCardContent}\n\n`;
+    userPromptContent += `# Hierarchical Context (Downwards)\nExisting Child Cards Content:\n${existingChildrenContent}\n\n`;
+    userPromptContent += `# User's Custom Instruction\nUser Request:\n${userPrompt}\n\n`; // Include the user's specific prompt
+    userPromptContent += `# Task\n\nBased *primarily* on the "User Request" and the "Primary Subject Card", generate appropriate text content. Use the surrounding context (prompts, parent, siblings, children) to ensure the response is coherent and fits the overall document structure and style.\n\nFocus on:\n- Directly addressing the "User Request".\n- Using the "Primary Subject Card" content as the main input for the request.\n- Maintaining coherence with all provided context.\n- Adhering to any relevant style or content instructions in the prompts.\n- Output *only* the requested text content. If the request implies multiple distinct outputs (e.g., "list three ideas"), separate them with "---" on its own line.`;
+
     messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });

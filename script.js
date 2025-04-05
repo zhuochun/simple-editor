@@ -1249,7 +1249,7 @@ document.addEventListener('DOMContentLoaded', () => {
              }
 
             aiService.generateCustom({
-                cardContent: card.content,
+                card: card, // Pass the full card object
                 userPrompt: userPrompt,
                 onChunk: (delta) => {
                     if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) {
