@@ -19,6 +19,8 @@ Operational Guidelines:
 Maintain clarity, coherence, and consistency, always respecting the discrete, card-based nature of the writing environment.`
 };
 
+import * as data from './data.js'; // Import data module
+
 // --- State ---
 let aiSettings = { providerUrl: '', modelName: '', apiKey: '', isValid: false }; // Local cache
 let uiElements = {}; // To store references to UI elements
@@ -217,16 +219,47 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
 
 // --- AI Generation Functions ---
 
-function generateContinuation({ contextText, columnPrompt, onChunk, onError, onDone }) {
+function generateContinuation({ cardId, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    let userPrompt = '';
-    if (columnPrompt) {
-        userPrompt += `## Author Provided Context\n\n${columnPrompt}`;
+
+    // Fetch context using data module functions
+    const currentCard = data.getCard(cardId);
+    if (!currentCard) {
+        onError(new Error(`Card with ID ${cardId} not found.`));
+        return;
     }
-    userPrompt += `\n\n## Existing Cards\n\n${contextText}`;
-    userPrompt += `\n\n## Instruction\n\nGiven the above context and existing cards, create the next card that logically continues and expands on the sequence.
-Ensure continuity, coherence, and clarity in content and structure.`;
-    messages.push({ role: "user", content: userPrompt });
+
+    const globalPrompt = data.getColumnData(0)?.prompt || 'None';
+    const columnPrompt = data.getColumnData(currentCard.columnIndex)?.prompt || 'None';
+    const parentCard = currentCard.parentId ? data.getCard(currentCard.parentId) : null;
+    const parentCardContent = parentCard?.content || 'None (This is a root card)';
+    const currentCardContent = currentCard.content || '';
+
+    const siblings = data.getSiblingCards(cardId);
+    const cardsAbove = siblings.filter(c => c.order < currentCard.order);
+    const cardsAboveContent = cardsAbove.filter(c => !!c.content).map(c => c.content.trim()).join('\n\n---\n\n') || 'None';
+
+    // Construct the prompt
+    let userPromptContent = `## Overall Document Context\n\n${globalPrompt}\n\n`;
+    userPromptContent += `## Current Column Context\n\n${columnPrompt}\n\n`;
+    userPromptContent += `## Parent Card Content (Hierarchical Context)\n\n${parentCardContent}\n\n`;
+    userPromptContent += `## Preceding Sibling Cards Content (Sequence Context)\n\n${cardsAboveContent}\n\n`;
+    userPromptContent += `## Current Card Content (The anchor to continue from)\n\n${currentCardContent}\n\n`;
+
+    userPromptContent += `## Task
+
+Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Current Card Content".
+This new card will be placed immediately after the current card, within the same column and under the same parent (as the next sibling).
+
+Focus on:
+- Directly continuing the thought, topic, or sequence from the "Current Card Content".
+- Maintaining coherence with the "Preceding Sibling Cards Content" and the "Parent Card Content".
+- Adhere to any explicit style guidelines specified in the Global or Column Prompts. Crucially, analyze and **mimic the existing writing style** (considering aspects like tone, voice, vocabulary, sentence structure, formality, pacing, etc.) evident in the Parent Card, Preceding Sibling Cards, and *especially* the Current Card Content. The goal is seamless stylistic consistency.
+- Adhering to any other relevant instructions in the Global and Column Prompts.
+- Output *only* the text for the new card.
+`;
+
+    messages.push({ role: "user", content: userPromptContent });
 
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }

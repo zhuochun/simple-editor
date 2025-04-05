@@ -997,41 +997,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- AI Action Handlers ---
 
-    // Helper to get context for AI (uses data functions)
-    function getCardContextForContinue(cardId) {
-        const currentCard = data.getCard(cardId);
-        if (!currentCard) return { contextText: '', columnPrompt: '' };
-
-        const columnIndex = currentCard.columnIndex;
-        const columnData = data.getColumnData(columnIndex);
-        const columnPrompt = columnData?.prompt || '';
-
-        const siblings = data.getSiblingCards(cardId); // Use data helper
-        const cardsAbove = siblings.filter(c => c.order < currentCard.order);
-        let contextText = cardsAbove.map(c => c.content || '').join('\n\n').trim();
-        if (contextText) contextText += '\n\n---\n\n';
-        contextText += currentCard.content || '';
-
-        return { contextText: contextText.trim(), columnPrompt };
-    }
-
     function handleAiContinue(cardId) {
         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-        const card = data.getCard(cardId);
-        if (!card) return;
-
-        const { contextText, columnPrompt } = getCardContextForContinue(cardId);
+        const currentCard = data.getCard(cardId); // Still need current card for column/parent info
+        if (!currentCard) return;
 
         // Find insertBeforeId using data helpers
         let insertBeforeId = null;
-        const siblings = data.getSiblingCards(cardId);
+        const siblings = data.getSiblingCards(cardId); // Need siblings to find insertion point
         const currentIndex = siblings.findIndex(c => c.id === cardId);
         if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
             insertBeforeId = siblings[currentIndex + 1].id;
         }
 
         // Use handleAddCard to create placeholder and update DOM/Data
-        const newCardId = handleAddCard(card.columnIndex, card.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
+        // Pass currentCard's column and parentId
+        const newCardId = handleAddCard(currentCard.columnIndex, currentCard.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
         if (!newCardId) return;
 
         const newCardEl = getCardElement(newCardId);
@@ -1044,9 +1025,9 @@ document.addEventListener('DOMContentLoaded', () => {
              return;
         }
 
+        // Call aiService, passing only the cardId and callbacks
         aiService.generateContinuation({
-            contextText,
-            columnPrompt,
+            cardId: cardId, // Pass the ID of the card *before* which the AI should continue
             onChunk: (delta) => {
                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
                     newTextarea.value = '';
