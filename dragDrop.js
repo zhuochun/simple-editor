@@ -1,5 +1,6 @@
 // --- State ---
 let draggedCardId = null;
+let draggedElement = null; // Store the element being dragged
 let dragIndicator = null;
 
 // --- DOM Helpers (to be passed in) ---
@@ -58,21 +59,50 @@ function handleDragStart(event) {
     }
 
     draggedCardId = cardId;
+    draggedElement = cardEl; // Store the actual element
     event.dataTransfer.setData('text/plain', draggedCardId);
     event.dataTransfer.effectAllowed = 'move';
-    requestAnimationFrame(() => cardEl.classList.add('dragging'));
+    // Use rAF for potentially smoother visual start, checking element still exists
+    requestAnimationFrame(() => {
+        // Check if the drag is still associated with this element
+        if (draggedElement === cardEl) {
+             draggedElement.classList.add('dragging');
+        }
+    });
     ensureDragIndicator(); // Create indicator instance if needed
-    console.log(`Drag Start: ${draggedCardId}`);
+    console.log(`Drag Start: ID = ${draggedCardId}`);
+    // Add logging to confirm state *after* assignment
+    console.log(`handleDragStart End: draggedCardId = ${draggedCardId}, draggedElement =`, draggedElement);
 }
 
 function handleDragEnd(event) {
-    if (draggedCardId) {
+    console.log("handleDragEnd called");
+    console.log(`handleDragEnd Start: draggedCardId = ${draggedCardId}, draggedElement =`, draggedElement);
+
+    // Prioritize using the stored element reference for cleanup
+    if (draggedElement) {
+        draggedElement.classList.remove('dragging');
+        console.log(`handleDragEnd: Removed 'dragging' class using stored draggedElement`, draggedElement);
+    } else if (draggedCardId) {
+        // Fallback: Try using the ID if the element reference was lost
+        console.warn(`handleDragEnd: draggedElement was null, attempting fallback using ID: ${draggedCardId}`);
         const cardEl = getCardElement(draggedCardId);
-        if (cardEl) cardEl.classList.remove('dragging');
+        if (cardEl) {
+            cardEl.classList.remove('dragging');
+            console.log(`handleDragEnd: Fallback - Removed 'dragging' class from element found via ID`, cardEl);
+        } else {
+            console.error(`handleDragEnd: Fallback failed - Could not find card element for ID ${draggedCardId}`);
+        }
+    } else {
+        // If both are null, we can't do much
+        console.error("handleDragEnd: Both draggedElement and draggedCardId are null. Cannot remove 'dragging' class.");
     }
-    clearDragStyles(true); // Remove indicator instance
-    draggedCardId = null;
-    console.log("Drag End");
+
+    // Final cleanup
+    clearDragStyles(true); // Remove indicator instance and .drag-over-* styles
+    draggedCardId = null; // Reset state
+    draggedElement = null; // Reset state
+    console.log("Drag End: State cleared.");
 }
 
 function handleDragOver(event) {
@@ -214,21 +244,18 @@ function handleDragLeave(event) {
     const currentTarget = event.currentTarget; // Element being left
     const leavingValidTarget = currentTarget.matches('.card, .card-group, .cards-container');
 
-    // Only remove highlight if moving outside the current target element entirely
-    if (leavingValidTarget && (!relatedTarget || !currentTarget.contains(relatedTarget))) {
-         currentTarget.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty');
-          // Hide indicator if leaving the container it's currently in
-          if (dragIndicator && dragIndicator.parentNode === currentTarget) {
-               dragIndicator.style.display = 'none';
-          }
+    // Let handleDragOver manage clearing/setting hover styles as the cursor moves.
+    // Let handleDragEnd / handleDrop handle the final cleanup.
+    // We only need to potentially hide the indicator here if the cursor is truly leaving
+    // the element that currently contains the indicator.
+    const isLeavingIndicatorParent = dragIndicator && dragIndicator.parentNode === currentTarget;
+    const isMovingToChild = relatedTarget && currentTarget.contains(relatedTarget);
+
+    // Hide indicator if moving from the indicator's parent to somewhere outside of it.
+    if (isLeavingIndicatorParent && !isMovingToChild && dragIndicator) {
+        // handleDragOver will display it again if needed when entering a new valid parent.
+        dragIndicator.style.display = 'none';
     }
-    // Clean up highlights within nested containers if leaving them
-     if (currentTarget.matches('.cards-container, .card-group')) {
-        if (!currentTarget.contains(relatedTarget)) {
-            currentTarget.querySelectorAll('.drag-over-card, .drag-over-group, .drag-over-empty')
-                .forEach(el => el.classList.remove('drag-over-card', 'drag-over-group', 'drag-over-empty'));
-        }
-     }
 }
 
 function handleDrop(event) {
@@ -240,16 +267,16 @@ function handleDrop(event) {
     // Final validation checks
     if (!droppedCardId || !draggedCardId || droppedCardId !== draggedCardId) {
         console.warn("Drop aborted: Mismatched or missing card ID.");
-        clearDragStyles(true); draggedCardId = null; return;
+        clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
     const droppedCardData = getCardData(droppedCardId); // Check data exists
     if (!droppedCardData) {
          console.error("Drop aborted: Dragged card data not found.");
-         clearDragStyles(true); draggedCardId = null; return;
+         clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
     if (!dragIndicator || dragIndicator.style.display === 'none' || !dragIndicator.parentNode) {
         console.warn("Drop aborted: No valid drop indicator position.");
-        clearDragStyles(true); draggedCardId = null; return;
+        clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
 
     // --- Determine Drop Location ---
@@ -263,7 +290,7 @@ function handleDrop(event) {
     const targetColumnEl = indicatorParent.closest('.column');
     if (!targetColumnEl) {
          console.warn("Drop aborted: Indicator not within a column.");
-         clearDragStyles(true); draggedCardId = null; return;
+         clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
     targetColumnIndex = getColumnIndex(targetColumnEl); // Use DOM helper
 
@@ -273,7 +300,7 @@ function handleDrop(event) {
          // Final check: cannot drop into own child group
          if (newParentId === droppedCardId) {
              console.warn("Drop aborted: Cannot drop into own child group (final check).");
-             clearDragStyles(true); draggedCardId = null; return;
+             clearDragStyles(true); /* Let handleDragEnd clear state */ return;
          }
     } else if (indicatorParent.classList.contains('cards-container')) {
         // Dropped into empty column space
@@ -283,17 +310,17 @@ function handleDrop(event) {
              // 1. Non-root card cannot be dropped into empty space of non-first column.
              if (targetColumnIndex > 0 && !draggedCardIsRoot) {
                  console.warn(`Drop aborted: Cannot drop non-root card into empty space of column ${targetColumnIndex}.`);
-                 clearDragStyles(true); draggedCardId = null; return;
+                 clearDragStyles(true); /* Let handleDragEnd clear state */ return;
              }
              // 2. Root card cannot be dropped into empty space of non-first column.
              if (targetColumnIndex > 0 && draggedCardIsRoot) {
                  console.warn(`Drop aborted: Cannot drop root card into empty space of column ${targetColumnIndex}.`);
-                 clearDragStyles(true); draggedCardId = null; return;
+                 clearDragStyles(true); /* Let handleDragEnd clear state */ return;
              }
          } else {
         // Should not happen if dragOver logic is correct
         console.warn("Drop aborted: Indicator parent is not group or container.", indicatorParent);
-        clearDragStyles(true); draggedCardId = null; return;
+        clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
 
     // Determine the card ID to insert before, if any
@@ -315,7 +342,7 @@ function handleDrop(event) {
     // Final check: cannot insert relative to self
     if (insertBeforeCardId === droppedCardId) {
          console.warn("Drop aborted: Attempting to insert relative to self.");
-         clearDragStyles(true); draggedCardId = null; return;
+         clearDragStyles(true); /* Let handleDragEnd clear state */ return;
     }
 
     console.log(`Drop details: Card ${droppedCardId} -> Col ${targetColumnIndex}, Parent ${newParentId || 'root'}, Before ${insertBeforeCardId || 'end'}`);
@@ -340,6 +367,7 @@ function handleDrop(event) {
 
     clearDragStyles(true); // Clean up UI
     draggedCardId = null; // Reset state
+    draggedElement = null; // Reset state
 }
 
 
