@@ -377,7 +377,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Add double-click listener to create a child card in this group
         groupEl.addEventListener('dblclick', (e) => {
-            if (e.target.closest('.card')) return; // Click was on a card
+            // Ignore dblclick if it's inside the textarea or any part of a card within the group
+            if (e.target.closest('textarea.card-content') || e.target.closest('.card')) {
+                return;
+            }
             e.stopPropagation();
             const parentId = groupEl.dataset.parentId;
             const columnEl = groupEl.closest('.column');
@@ -425,6 +428,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Double-click on empty space in first column adds root card
         cardsContainer.addEventListener('dblclick', (e) => {
+             // Ignore dblclick if it's inside the textarea
+             if (e.target.closest('textarea.card-content')) {
+                 return;
+             }
              if (e.target === cardsContainer && columnIndex === 0) {
                  handleAddCard(columnIndex, null);
              }
