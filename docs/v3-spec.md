@@ -16,24 +16,28 @@ Store the AI settings in localStorage.
 
 When all AI settings are filled (non-empty), then the following features become visible.
 
-## AI on Columns
+## AI Context Prompts
 
-In the `column-toolbar`, add a button "Add Prompt" to the `toolbar-left`.
+The AI utilizes several context prompts:
 
-- When clicked, show a textbox pop-up modal in the center for user to enter a column-level prompt message.
-
-Save the prompt per column together with the active project.
+- **Global Prompt:** A general prompt for the entire document, associated with the first column (Column 0). (Handled by data module, used by `aiService.js`).
+- **Column Prompt:** A specific prompt for the column the target card resides in. (Handled by data module, used by `aiService.js`).
+- **Target Column Prompt:** A specific prompt for the column where new child cards (e.g., from Breakdown) will be placed. (Handled by data module, used by `aiService.js`).
 
 ## AI on Cards
 
-On each card, add the following AI buttons before the `card-actions` in `card-header`.
+On each card, add the following AI action buttons (using emoji icons) before the standard `card-actions` in the `card-header`. These actions leverage rich context including parent, siblings, existing children, and relevant prompts (`globalPrompt`, `columnPrompt`, `targetColumnPrompt`).
 
-- Continue writing: Continue the content after this card, combine the column-level prompt (if any), the text content of all cards above it in the same column, and the text content of the current card, save the AI response as a new card after this card, same as the current card's `parentId`.
-- Breakdown: Ask the AI to breakdown this card, breakdown splits by "---" delimiter, insert each part as a new children card in the next column.
-- Expansion: Ask the AI to expand the content of this card, insert the AI response as a new child card in the next column.
-- Custom: Show a textbox pop-up modal in the center for user to enter a one-time prompt, combine the user's custom prompt with the text content of the current card, send to AI, insert the AI response as a child card in the next column.
-
-Change all the buttons in `card-header` to emoji icons.
+- **Continue:** Generate the content for the *next sibling card* based on the current card and its context (parent, preceding siblings, prompts). The AI is asked to mimic the existing writing style. The response populates a new card created immediately after the current one, under the same parent.
+- **Breakdown:** Ask the AI to brainstorm and generate content for multiple *new child cards* (typically 3-5) that elaborate on or decompose the current card's content. The AI considers the `targetColumnPrompt` for guidance. The response should use "---" as a delimiter between content for each new child card. Each part populates a new child card created in the next column.
+- **Expand:** Ask the AI to rewrite the *current card's content* to be significantly longer and more detailed, adding depth, examples, or explanations while maintaining focus and coherence with the surrounding context (parent, siblings, children, prompts). The response replaces the content of the existing card.
+- **Summarize:** Ask the AI to generate a concise summary synthesizing the core information from the *current card and its existing direct child cards*. The response replaces the content of the existing card (or could be used elsewhere).
+- **Custom:** Show a textbox pop-up modal for the user to enter a specific instruction. The AI executes this instruction using the current card and its full context.
+  - Output can vary:
+    - Modify the current card's content.
+    - Provide analysis or information.
+    - Generate multiple new cards (using "---" delimiter) if requested.
+  - The response is handled based on the nature of the output (replace current card, insert new children, etc. - *needs clarification on default insertion behavior if not modifying*).
 
 ## AI Interactions
 
@@ -43,8 +47,9 @@ When an error happens, fill in the error in the card text content.
 
 Remember to save all the card data after AI responses.
 
+## AI API Interaction (OpenAI Compatible)
 
-## OpenRouter API
+The `aiService.js` module handles communication with the AI provider using the Fetch API and expects an OpenAI-compatible streaming chat completions endpoint.
 
 ``` js
 fetch("https://openrouter.ai/api/v1/chat/completions", { // From user's AI setting
@@ -58,16 +63,13 @@ fetch("https://openrouter.ai/api/v1/chat/completions", { // From user's AI setti
   body: JSON.stringify({
     "model": "google/gemini-2.5-pro-exp-03-25:free", // From user's AI setting
     "messages": [
-      {
-        "role": "user",
-        "content": [
-          {
-            "type": "text",
-            "text": "What is in this image?"
-          }
-        ]
-      }
-    ]
+       { "role": "system", "content": AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }, // System prompt from aiService.js
+       { "role": "user", "content": "..." } // Dynamically constructed user prompt based on action and context
+       // ... potentially more messages
+    ],
+    "stream": true // Streaming is enabled
   })
 });
 ```
+
+The service handles Server-Sent Events (SSE) for streaming responses.
