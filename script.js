@@ -848,8 +848,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const originalParentId = card.parentId;
-        const originalColumnIndex = card.columnIndex;
+        // --- Determine card to scroll to *before* deletion ---
+        let targetIdToScroll = null;
+        let originalParentId = card.parentId; // Use initial 'card' object
+        const siblings = data.getSiblingCards(cardId);
+        const deletedIndex = siblings.findIndex(c => c.id === cardId);
+        let adjacentSiblingId = null;
+        if (deletedIndex !== -1) {
+            const nextSibling = siblings[deletedIndex + 1];
+            const prevSibling = siblings[deletedIndex - 1];
+            adjacentSiblingId = nextSibling ? nextSibling.id : (prevSibling ? prevSibling.id : null);
+        }
+        targetIdToScroll = adjacentSiblingId || originalParentId; // Prioritize sibling, fallback to parent
+        // --- End scroll target determination ---
+
+        const originalColumnIndex = card.columnIndex; // Use initial 'card' object
         const deleteResult = data.deleteCardData(cardId); // Use data function
 
         if (deleteResult.deletedIds.length > 0) {
@@ -880,6 +893,14 @@ document.addEventListener('DOMContentLoaded', () => {
             updateAllToolbarButtons();
             data.saveProjectsData(); // Save changes
             console.log(`Card ${cardId} and descendants deleted.`);
+
+            // --- Scroll to adjacent card or parent using scrollHierarchy ---
+            if (targetIdToScroll) {
+                // Use existing scrollHierarchy to handle scrolling logic
+                scrollHierarchy(targetIdToScroll);
+                console.log(`Scrolled hierarchy based on target: ${targetIdToScroll}`);
+            }
+            // --- End scroll logic ---
         }
     }
 
