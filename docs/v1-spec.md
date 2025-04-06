@@ -42,13 +42,24 @@ The tool contains an interface with multiple columns of nested, editable cards.
 
 # Drag-and-Drop Reordering
 
-- Users can drag cards within the column to order content.
-  - When a card's order is changed, all the descendant card groups are reordered in their columns, meaning if Card A is above Card B in Column N, then the entire group of Card A's children appears above the entire group of Card B's children in Column N+1
-- Users can drag cards between columns to reorganize content.
-  - The new parent is the identified by the new card group or as a new root card.
-  - When a card is moved up to a left column, all its descendants move up the hierachy accordingly.
-  - When a card is moved down to a right column, all its descendants move down the hierachy as well, new columns would be created automatically.
-- Visual drag over indicators are displayed in the hovering column to provide visual indications.
+- Users can drag cards by their header area (excluding header buttons) to reorder or reparent them.
+- **Visual Feedback:**
+  - The dragged card gets a `dragging` style.
+  - An insertion indicator line appears between elements (cards, groups) or in empty valid drop zones to show where the card will be placed if dropped.
+  - Hovering over a potential drop area (another card's group, empty column space) highlights that area (`drag-over-group`, `drag-over-empty`).
+  - Hovering directly over another card highlights that card (`drag-over-parent`) to indicate dropping *onto* it to make the dragged card a child. The insertion indicator is hidden in this case.
+- **Drop Actions:**
+  - **Reordering/Moving (using indicator):** Dropping when the insertion indicator is visible places the card at the indicator's position.
+    - Within the same column: Changes the card's order relative to its siblings. Descendant groups in the next column reorder accordingly.
+    - Into a card group in the next column: Makes the card a child of that group's parent, ordered according to the indicator's position within the group. Descendants move down the hierarchy.
+    - Into empty space in the first column: Makes the card a root card, ordered according to the indicator's position. Descendants move up/down the hierarchy accordingly.
+  - **Reparenting (dropping onto a card):** Dropping directly onto another card (when highlighted as `drag-over-parent`) makes the dragged card the *last child* of the target card. The dragged card and its descendants move to the column immediately following the new parent.
+- **Constraints:**
+  - Cannot drop a card onto itself.
+  - Cannot drop a card into the group belonging to its own descendants.
+  - Non-root cards cannot be dropped into the empty space of any column other than the first (they must have a parent or be placed relative to other cards/groups).
+  - Root cards can only be dropped into the empty space of the first column.
+- **Data Handling:** The underlying `moveCardData` function is responsible for updating the card's order, parent, column index, and managing descendant hierarchy changes based on the drop action. The UI then re-renders based on the updated data. (The data layer might implicitly require new columns if descendants are moved further right, which the UI would then render).
 
 # Persistent Storage
 
