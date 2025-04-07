@@ -148,17 +148,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
         allIdsToCheckForGroups.forEach(currentId => {
             const currentCardData = data.getCard(currentId); // Get card data
-            if (!currentCardData) return; // Skip if card data is missing
+            if (!currentCardData) return; // Skip if card data is missing for the current ID
 
-            // Check if this card *has* children in the *next* column
-            const childrenInNextCol = data.getChildCards(currentId, currentCardData.columnIndex + 1);
-            if (childrenInNextCol.length > 0) {
-                // If it has children, find the corresponding group header element in the next column
-                const groupEl = getGroupElement(currentId); // Group ID matches parent card ID
-                if (groupEl) {
+            // For every card in the hierarchy (focused card + descendants),
+            // attempt to find its corresponding group header in the *next* column
+            // and scroll it into view. This ensures the potential drop zone or
+            // child area for the card is visible.
+            const groupEl = getGroupElement(currentId); // Group ID matches the parent card ID (currentId)
+
+            // Check if the group element actually exists in the DOM.
+            // It might not exist if the next column hasn't been rendered yet,
+            // or if the parent card was just created and the next column's
+            // render hasn't completed.
+            if (groupEl) {
+                // Verify the group element is in the correct column (next column relative to the parent card)
+                const groupColumnEl = groupEl.closest('.column');
+                const groupColumnIndex = groupColumnEl ? parseInt(groupColumnEl.dataset.columnIndex, 10) : -1;
+
+                if (groupColumnIndex === currentCardData.columnIndex + 1) {
                     // Find the scroll container for that group
-                    const groupScrollContainer = groupEl.closest('.column')?.querySelector('.cards-container');
-                    // Scroll the group into view. Center it, but scroll to top if the group itself is very tall.
+                    const groupScrollContainer = groupColumnEl.querySelector('.cards-container');
+                    // Scroll the group header into view. Center it, but scroll to top if the group itself is very tall.
                     scrollToTarget(groupScrollContainer, groupEl, true, true);
                 }
             }
