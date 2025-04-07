@@ -110,23 +110,39 @@ body.sidebar-collapsed #resizer::before {
 }
 
 /* --- Sidebar Specific --- */
-#add-project-btn {
-    display: block;
-    width: calc(100% - 20px);
-    margin: 10px;
+.sidebar-top-actions {
+    display: flex;
+    gap: 5px; /* Space between Add and Import buttons */
+    padding: 5px;
+    border-bottom: 1px solid #dee2e6; /* Separator */
+}
+
+.sidebar-top-actions button {
+    flex-grow: 1; /* Make buttons share space */
     padding: 8px 10px;
     font-size: 0.9em;
     font-weight: bold;
     cursor: pointer;
-    background-color: #007bff;
-    color: white;
     border: none;
     border-radius: 4px;
     text-align: center;
 }
-#add-project-btn:hover {
-    background-color: #0056b3;
+
+#add-project-btn {
+    background-color: #dee2e6;
 }
+#add-project-btn:hover {
+    background-color: #f0f4f8;
+}
+
+#import-project-btn {
+    background-color: #dee2e6;
+    color: white;
+}
+#import-project-btn:hover {
+    background-color: #f0f4f8;
+}
+
 
 #project-list {
     flex-grow: 1;
@@ -601,5 +617,33 @@ body.ai-ready .ai-feature {
 }
 
 .export-options-menu button:hover {
+    background-color: #f0f0f0;
+}
+
+/* --- Import Options Menu --- */
+.import-options-menu {
+    position: absolute; /* Positioned by JS */
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    z-index: 1001; /* Ensure it's above other elements */
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+}
+
+.import-options-menu button {
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-radius: 3px; /* Slight rounding */
+    margin: 0; /* Reset margin */
+}
+
+.import-options-menu button:hover {
     background-color: #f0f0f0;
 }

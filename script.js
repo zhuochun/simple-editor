@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mainContent = document.getElementById('main-content');
     const columnsContainer = document.getElementById('columnsContainer');
     const addProjectBtn = document.getElementById('add-project-btn');
+    const importProjectBtn = document.getElementById('import-project-btn'); // Added
     const projectListContainer = document.getElementById('project-list');
 
     // AI Settings Elements (Passed to aiService)
@@ -742,11 +743,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const project = data.projects[projectId];
         if (!project) return;
 
-        // Get the raw project data as stored (or intended to be stored)
-        const projectDataToExport = project.data; // This is the { columns: [...], cards: {...} } structure
+        // Create an object containing both title and data for export
+        const projectExportObject = {
+            title: project.title, // Include the project title
+            data: project.data    // Include the existing data structure
+        };
 
         try {
-            const jsonContent = JSON.stringify(projectDataToExport, null, 2); // Pretty print JSON
+            const jsonContent = JSON.stringify(projectExportObject, null, 2); // Pretty print JSON
             const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
             // Use UTC for timestamp consistency, replace invalid chars
             const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T').replace('Z', 'Z');
@@ -818,6 +822,135 @@ document.addEventListener('DOMContentLoaded', () => {
         const buttonElement = event.currentTarget; // Get the button that was clicked
         displayExportOptions(projectId, buttonElement);
     }
+
+    // --- Import Functions ---
+
+    async function processImportedData(jsonDataString, sourceDescription) {
+        try {
+            const importedFullObject = JSON.parse(jsonDataString);
+
+            // Extract title and the actual project data object
+            const newTitle = importedFullObject.title || "Imported Project"; // Get title from root
+            const importedProjectData = importedFullObject.data; // Get the data part
+
+            // Validate the nested 'data' object
+            if (!importedProjectData || !data.validateProjectData(importedProjectData)) {
+                alert(`Import failed: Invalid or missing project data structure within the JSON from ${sourceDescription}.`);
+                return;
+            }
+
+            // Add the project using addProjectData, passing the extracted project data
+            // addProjectData will generate a new ID and handle saving
+            const newProject = data.addProjectData(newTitle, importedProjectData); // Pass only the data part
+
+            if (newProject) {
+                data.saveProjectsData(); // Save the updated projects list
+                handleSwitchProject(newProject.id); // Switch to the newly imported project
+                alert(`Project "${newTitle}" imported successfully from ${sourceDescription}.`);
+                console.log(`Imported project ${newProject.id} from ${sourceDescription}`);
+            } else {
+                alert(`Import failed: Could not add the project data from ${sourceDescription}.`);
+            }
+
+        } catch (error) {
+            console.error(`Error processing imported data from ${sourceDescription}:`, error);
+            alert(`Import failed: Could not parse JSON data from ${sourceDescription}. Error: ${error.message}`);
+        }
+    }
+
+
+    function handleImportFromFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json,application/json'; // Accept .json files
+
+        input.onchange = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (readEvent) => {
+                const fileContent = readEvent.target.result;
+                processImportedData(fileContent, `file "${file.name}"`);
+            };
+            reader.onerror = (error) => {
+                console.error("Error reading file:", error);
+                alert(`Error reading file: ${error.message}`);
+            };
+            reader.readAsText(file); // Read file as text
+        };
+
+        input.click(); // Trigger file selection dialog
+    }
+
+    async function handleImportFromUrl() {
+        const url = prompt("Enter the URL of the project JSON file:");
+        if (!url) return; // User cancelled
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const jsonDataString = await response.text(); // Get response as text
+            processImportedData(jsonDataString, `URL "${url}"`);
+
+        } catch (error) {
+            console.error("Error fetching or processing URL:", error);
+            alert(`Failed to import from URL: ${error.message}. Check the URL and ensure it points to a valid JSON file with correct CORS headers if applicable.`);
+        }
+    }
+
+
+    function displayImportOptions(buttonElement) {
+        // Remove any existing menus
+        document.getElementById('import-options-menu')?.remove();
+        document.getElementById('export-options-menu')?.remove(); // Also close export menu
+
+        const menu = document.createElement('div');
+        menu.id = 'import-options-menu';
+        menu.className = 'import-options-menu'; // Add class for styling
+
+        const fileButton = document.createElement('button');
+        fileButton.textContent = 'Import File';
+        fileButton.onclick = (e) => {
+            e.stopPropagation();
+            handleImportFromFile();
+            menu.remove();
+        };
+
+        const urlButton = document.createElement('button');
+        urlButton.textContent = 'Import URL';
+        urlButton.onclick = (e) => {
+            e.stopPropagation();
+            handleImportFromUrl();
+            menu.remove();
+        };
+
+        menu.appendChild(fileButton);
+        menu.appendChild(urlButton);
+
+        // Positioning relative to the button
+        const rect = buttonElement.getBoundingClientRect();
+        menu.style.position = 'absolute';
+        // Position below the import button
+        menu.style.top = `${rect.bottom + window.scrollY + 2}px`; // Add 2px gap
+        menu.style.left = `${rect.left + window.scrollX}px`;
+        menu.style.zIndex = '1000'; // Ensure it's on top
+
+        document.body.appendChild(menu);
+
+        // Click outside to close
+        const clickOutsideHandler = (event) => {
+            if (!menu.contains(event.target) && event.target !== buttonElement) {
+                menu.remove();
+                document.removeEventListener('click', clickOutsideHandler, true); // Clean up listener
+            }
+        };
+        // Use capture phase to catch clicks early
+        document.addEventListener('click', clickOutsideHandler, true);
+    }
+
 
     function handleAddCard(columnIndex, parentId = null, initialContent = '', insertBeforeCardId = null) {
         const newCardData = data.addCardData(columnIndex, parentId, initialContent, insertBeforeCardId); // Use data function
@@ -1719,6 +1852,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 5. Setup Global Listeners & Sidebar State
         addProjectBtn.addEventListener('click', handleAddProject);
+        importProjectBtn.addEventListener('click', (e) => displayImportOptions(e.currentTarget)); // Added listener
         resizer.addEventListener('click', () => {
             const isCollapsed = document.body.classList.toggle('sidebar-collapsed');
             localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed);

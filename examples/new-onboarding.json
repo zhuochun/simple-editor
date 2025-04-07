@@ -1,0 +1,282 @@
+{
+  "title": "Welcome",
+  "data": {
+    "columns": [
+      {
+        "id": "col-id_m95gdqmxp31rv9j0",
+        "prompt": ""
+      },
+      {
+        "id": "col-id_m95gdqmx0gpm0r4q",
+        "prompt": ""
+      },
+      {
+        "id": "col-id_m95gdqmx1a8p0at2",
+        "prompt": ""
+      }
+    ],
+    "cards": {
+      "card_m95gds1ezn0zzyxl": {
+        "id": "card_m95gds1ezn0zzyxl",
+        "name": null,
+        "content": "Welcome to this non-linear, card-based writing environment – a space designed to mirror the organic flow of your thoughts while providing structure when you need it.  \n\n- Capture fragmented ideas as individual cards.\n- Organize them into structured branches that reflect your thinking.\n- Whether you're drafting essays, mapping research, or shaping long-form projects",
+        "parentId": null,
+        "columnIndex": 0,
+        "order": 0,
+        "color": "hsl(200, 60%, 90%)"
+      },
+      "card_m95geskttdakt9jf": {
+        "id": "card_m95geskttdakt9jf",
+        "name": null,
+        "content": "Basic Features\n\nThis tool stores all data locally in your browser and allows exporting to plain text. Work with discrete idea cards organized in columns showing hierarchy (parent-child relationships) and parallelism (sibling relationships), where left columns contain broader concepts and right columns contain detailed elaborations.",
+        "parentId": null,
+        "columnIndex": 0,
+        "order": 1,
+        "color": "hsl(230, 60%, 90%)"
+      },
+      "card_m95gi3yc40oaqq1d": {
+        "id": "card_m95gi3yc40oaqq1d",
+        "name": null,
+        "content": "All content you create in this tool is stored exclusively in your browser's local storage. There's no cloud syncing, server storage, or third-party analytics\n\nEdits are automatically saves every time you leave the text area.",
+        "parentId": "card_m95geskttdakt9jf",
+        "columnIndex": 1,
+        "order": 0,
+        "color": "hsl(230, 60%, 90%)"
+      },
+      "card_m95gkrvy6v7g652q": {
+        "id": "card_m95gkrvy6v7g652q",
+        "name": null,
+        "content": "Understand the structures:\n\n- Card: each card represents a single, self-contained idea or piece of information.\n- Column: represent the organizational hierarchy - the content flows from left (highest level) to right (more detailed).",
+        "parentId": "card_m95geskttdakt9jf",
+        "columnIndex": 1,
+        "order": 1,
+        "color": "hsl(230, 60%, 87%)"
+      },
+      "card_m95gnhvwwksnlbky": {
+        "id": "card_m95gnhvwwksnlbky",
+        "name": null,
+        "content": "Understand the relationships:\n\n- Horizontal relationships (parent/child) show hierarchical connections where child cards elaborate on parent concepts\n- Vertical relationships (siblings) show parallel concepts at the same level detail",
+        "parentId": "card_m95geskttdakt9jf",
+        "columnIndex": 1,
+        "order": 2,
+        "color": "hsl(230, 60%, 84%)"
+      },
+      "card_m95gowoqvkkj7ul3": {
+        "id": "card_m95gowoqvkkj7ul3",
+        "name": null,
+        "content": "In-text Edit/Flow\n\nEditing and navigating this tool is fluid: drag-and-drop cards to reorganize ideas or use keyboard shortcuts for efficient movement between cards and columns.",
+        "parentId": null,
+        "columnIndex": 0,
+        "order": 2,
+        "color": "hsl(260, 60%, 90%)"
+      },
+      "card_m95guu5lnc6e5ud3": {
+        "id": "card_m95guu5lnc6e5ud3",
+        "name": null,
+        "content": "Navigation Shortcuts:\n\nStart playing with these shortcuts to navigate and organize your thoughts. Try moving between cards and creating new ones to see how the structure works.",
+        "parentId": "card_m95gowoqvkkj7ul3",
+        "columnIndex": 1,
+        "order": -0.5,
+        "color": "hsl(260, 60%, 90%)"
+      },
+      "card_m95gwdw7svggvf0w": {
+        "id": "card_m95gwdw7svggvf0w",
+        "name": null,
+        "content": "Basic Navigation:\n\nAlt+Up/Down: Jump directly to previous/next sibling cards\nAlt+Left/Right: Move between parent and child cards",
+        "parentId": "card_m95guu5lnc6e5ud3",
+        "columnIndex": 2,
+        "order": 0,
+        "color": "hsl(260, 60%, 87%)"
+      },
+      "card_m95gwdw87xftos02": {
+        "id": "card_m95gwdw87xftos02",
+        "name": null,
+        "content": "Creating & Merging Cards:\n\nCtrl+Enter: Split current card and create new sibling below\nAlt+Enter: Split current card and create child in next column\n\nBackspace at start: Merge with previous card\nDelete at end: Merge with next card",
+        "parentId": "card_m95guu5lnc6e5ud3",
+        "columnIndex": 2,
+        "order": 0.5,
+        "color": "hsl(260, 60%, 84%)"
+      },
+      "card_m95gwdw9moyf7bi4": {
+        "id": "card_m95gwdw9moyf7bi4",
+        "name": null,
+        "content": "Try This Exercise:\n\n1. Use Alt+Enter to create a child card from this one\n2. Type some text in the new child card\n3. Use Alt+Left to return to this parent card\n4. Use Ctrl+Enter to split this card into two siblings",
+        "parentId": "card_m95guu5lnc6e5ud3",
+        "columnIndex": 2,
+        "order": 1,
+        "color": "hsl(260, 60%, 81%)"
+      },
+      "card_m95gwdw9489ydl39": {
+        "id": "card_m95gwdw9489ydl39",
+        "name": null,
+        "content": "Advanced Tips:\n\n- Combine shortcuts for faster editing\n- Use Alt+Left/Right to explore your document's hierarchy\n- Try merging cards after splitting them to understand how content flows",
+        "parentId": "card_m95guu5lnc6e5ud3",
+        "columnIndex": 2,
+        "order": 1.5,
+        "color": "hsl(260, 60%, 78%)"
+      },
+      "card_m95gz3y6ip1llfoe": {
+        "id": "card_m95gz3y6ip1llfoe",
+        "name": null,
+        "content": "Drag-and-Drop:\n\nDrag cards to rearrange ideas and see connections form across columns.",
+        "parentId": "card_m95gowoqvkkj7ul3",
+        "columnIndex": 1,
+        "order": -0.75,
+        "color": "hsl(260, 60%, 90%)"
+      },
+      "card_m95h0ylnmuxrtuem": {
+        "id": "card_m95h0ylnmuxrtuem",
+        "name": null,
+        "content": "Try these actions to explore:\n\n- Click any card to edit\n- Drag cards to reorder\n- Drag card onto another card to reparenting ",
+        "parentId": "card_m95gz3y6ip1llfoe",
+        "columnIndex": 2,
+        "order": 2,
+        "color": "hsl(260, 60%, 90%)"
+      },
+      "card_m95h495g1sj85cjw": {
+        "id": "card_m95h495g1sj85cjw",
+        "name": null,
+        "content": "AI-Assisted Flow\n\nThe AI assistant transforms your writing workflow by intelligently leveraging document structure and context.",
+        "parentId": null,
+        "columnIndex": 0,
+        "order": 3,
+        "color": "hsl(290, 60%, 90%)"
+      },
+      "card_m95h4t8x3hcmk291": {
+        "id": "card_m95h4t8x3hcmk291",
+        "name": null,
+        "content": "Context Prompts\n\nContext Prompts are set on top of each column with \"Prompt\" button. They guide all AI actions.\n\nThere are two kinds: Global Prompt and Column Prompt.",
+        "parentId": "card_m95h495g1sj85cjw",
+        "columnIndex": 1,
+        "order": 3,
+        "color": "hsl(290, 60%, 84%)"
+      },
+      "card_m95h5f5xoyqc8bve": {
+        "id": "card_m95h5f5xoyqc8bve",
+        "name": null,
+        "content": "AI on Cards\n\nOn each card's header, there are a few AI action buttons.\n\nAI actions on cards leverage context (parent, siblings, children, prompts) to perform specific functions: Continue expands document flow, Expand adds depth, Summarize condenses content, Brainstorm decomposes concepts, and Custom executes tailored instructions.",
+        "parentId": "card_m95h495g1sj85cjw",
+        "columnIndex": 1,
+        "order": 4,
+        "color": "hsl(290, 60%, 81%)"
+      },
+      "card_m95h6ff05u7064cw": {
+        "id": "card_m95h6ff05u7064cw",
+        "name": null,
+        "content": " AI Flow Setup\n\nYou need to bring your own keys, and configure them in the left sidebar.",
+        "parentId": "card_m95h495g1sj85cjw",
+        "columnIndex": 1,
+        "order": 0,
+        "color": "hsl(290, 60%, 90%)"
+      },
+      "card_m95h71s2lq2l4zu3": {
+        "id": "card_m95h71s2lq2l4zu3",
+        "name": null,
+        "content": "Pick a Provider\n\nChoose your preferred OpenAI-compatible provider and enter the required credentials in the sidebar settings.\n\nE.g. https://openrouter.ai/\n\nCreate an account and grab the API token.",
+        "parentId": "card_m95h6ff05u7064cw",
+        "columnIndex": 2,
+        "order": 1,
+        "color": "hsl(290, 60%, 90%)"
+      },
+      "card_m95h71s40rdvdojn": {
+        "id": "card_m95h71s40rdvdojn",
+        "name": null,
+        "content": "API Endpoints\n\nOpenRouter: https://openrouter.ai/api/v1/chat/completions\nOpenAI: https://api.openai.com/v1/completions",
+        "parentId": "card_m95h6ff05u7064cw",
+        "columnIndex": 2,
+        "order": 2,
+        "color": "hsl(290, 60%, 87%)"
+      },
+      "card_m95h71s4lsdnrsli": {
+        "id": "card_m95h71s4lsdnrsli",
+        "name": null,
+        "content": "Recommended Model Names\n\nFor OpenAI: Select 'GPT-4o' from the available models\nFor OpenRouter: Select 'deepseek/deepseek-chat-v3-0324:free' from the available models",
+        "parentId": "card_m95h6ff05u7064cw",
+        "columnIndex": 2,
+        "order": 3,
+        "color": "hsl(290, 60%, 84%)"
+      },
+      "card_m95hc6o6nvai760w": {
+        "id": "card_m95hc6o6nvai760w",
+        "name": null,
+        "content": "Global Prompt: A general prompt for the entire document, associated with the first column.\n\nThis prompt is always attached to all the AI actions.",
+        "parentId": "card_m95h4t8x3hcmk291",
+        "columnIndex": 2,
+        "order": 0,
+        "color": "hsl(290, 60%, 84%)"
+      },
+      "card_m95hcpz42d0to8j6": {
+        "id": "card_m95hcpz42d0to8j6",
+        "name": null,
+        "content": "Column Prompt: A specific prompt for each columns.\n\nThe respective column's prompt is attached depends on your target card resides in.",
+        "parentId": "card_m95h4t8x3hcmk291",
+        "columnIndex": 2,
+        "order": 1,
+        "color": "hsl(290, 60%, 81%)"
+      },
+      "card_m95hf9s1p6sz7qpr": {
+        "id": "card_m95hf9s1p6sz7qpr",
+        "name": null,
+        "content": "Continue Action ⬇️: Generate the next logical card in sequence, expanding the document flow while maintaining context",
+        "parentId": "card_m95h5f5xoyqc8bve",
+        "columnIndex": 2,
+        "order": 0,
+        "color": "hsl(290, 60%, 84%)"
+      },
+      "card_m95hff8mfiaal8ia": {
+        "id": "card_m95hff8mfiaal8ia",
+        "name": null,
+        "content": "Expand Action ↕️: Elaborate on the current card's content by adding depth, examples, or detailed explanations",
+        "parentId": "card_m95h5f5xoyqc8bve",
+        "columnIndex": 2,
+        "order": 0.5,
+        "color": "hsl(290, 60%, 78%)"
+      },
+      "card_m95hhrsh3x7m7n0g": {
+        "id": "card_m95hhrsh3x7m7n0g",
+        "name": null,
+        "content": "Practical applications:\n\n- Creating specialized contexts for different document sections\n- Maintaining consistent terminology within specific branches\n- Applying different writing conventions to distinct content areas\n- Enabling focused brainstorming within constrained parameters",
+        "parentId": "card_m95h4t8x3hcmk291",
+        "columnIndex": 2,
+        "order": 2,
+        "color": "hsl(290, 60%, 78%)"
+      },
+      "card_m95hq0iaivwjjoqt": {
+        "id": "card_m95hq0iaivwjjoqt",
+        "name": null,
+        "content": "Brainstorm 🧠: Create multiple child cards that systematically decompose the current card's concept",
+        "parentId": "card_m95h5f5xoyqc8bve",
+        "columnIndex": 2,
+        "order": 6,
+        "color": "hsl(290, 60%, 63%)"
+      },
+      "card_m95hq0ig43e22knf": {
+        "id": "card_m95hq0ig43e22knf",
+        "name": null,
+        "content": "Summarize ⏪: Condense the current card and its children into a concise overview while preserving key points",
+        "parentId": "card_m95h5f5xoyqc8bve",
+        "columnIndex": 2,
+        "order": 3.25,
+        "color": "hsl(290, 60%, 75%)"
+      },
+      "card_m95hq0ij3840nr0q": {
+        "id": "card_m95hq0ij3840nr0q",
+        "name": null,
+        "content": "Custom ✨: Execute tailored instructions that modify content, generate variants, or perform specialized analyses",
+        "parentId": "card_m95h5f5xoyqc8bve",
+        "columnIndex": 2,
+        "order": 9,
+        "color": "hsl(290, 60%, 54%)"
+      },
+      "card_m95legqybno6jb3l": {
+        "id": "card_m95legqybno6jb3l",
+        "name": null,
+        "content": "There is a download button 📤 next to the project title, you can download all the cards in a plain text file anytime.",
+        "parentId": "card_m95gi3yc40oaqq1d",
+        "columnIndex": 2,
+        "order": 0,
+        "color": "hsl(230, 60%, 90%)"
+      }
+    }
+  }
+}

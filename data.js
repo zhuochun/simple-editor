@@ -19,6 +19,13 @@ function generateId(prefix = 'id_') {
 
 // --- Project Management ---
 
+// Added validation function (needed by addProjectData for import)
+function validateProjectData(importedData) {
+    if (!importedData || typeof importedData !== 'object') return false;
+    // Basic check: presence of columns array and cards object
+    return Array.isArray(importedData.columns) && typeof importedData.cards === 'object' && importedData.cards !== null;
+}
+
 function createDefaultProject(title = "Untitled Project") {
     const projectId = generateId('proj_');
     const defaultColumns = [];
@@ -36,12 +43,26 @@ function createDefaultProject(title = "Untitled Project") {
     };
 }
 
-function addProjectData(title) {
+/**
+ * Adds a new project to the projects object.
+ * If initialProjectData is provided, it uses that data; otherwise, it creates a default project.
+ * @param {string} title - The title for the new project.
+ * @param {Object} [initialProjectData=null] - Optional. The data ({ columns, cards }) to populate the project with.
+ * @returns {Object} The newly created project object.
+ */
+function addProjectData(title, initialProjectData = null) {
     const newTitle = title.trim() || "Untitled Project";
     const newProject = createDefaultProject(newTitle);
+
+    if (initialProjectData && validateProjectData(initialProjectData)) { // Use validation logic
+        newProject.data = initialProjectData;
+        console.log(`Creating project "${newTitle}" with imported data.`);
+    }
+
     projects[newProject.id] = newProject;
     return newProject; // Return the created project data
 }
+
 
 function deleteProjectData(projectIdToDelete) {
     if (!projects[projectIdToDelete]) return { deleted: false, newActiveId: activeProjectId };
@@ -803,6 +824,7 @@ export {
     // Functions
     generateId,
     createDefaultProject,
+    validateProjectData,
     addProjectData,
     deleteProjectData,
     switchActiveProject,
