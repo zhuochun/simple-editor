@@ -1396,21 +1396,225 @@ document.addEventListener('DOMContentLoaded', () => {
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') { e.preventDefault(); finishEditing(true); }
             else if (e.key === 'Escape') { e.preventDefault(); finishEditing(false); }
-        });
+         });
+      }
+
+     // --- AI Action Helper ---
+
+     /**
+      * Processes AI responses that might contain multiple parts separated by AI_RESPONSE_SEPARATOR.
+      * Updates the initial placeholder card with the first part and creates new cards for subsequent parts.
+      * Handles data updates, DOM manipulation, saving, and focusing.
+      *
+      * @param {string} fullResponse - The complete response string from the AI service.
+      * @param {string} placeholderCardId - The ID of the initially created placeholder card.
+      * @param {HTMLTextAreaElement} placeholderTextarea - The textarea element of the placeholder card.
+      * @param {string} originalCardId - The ID of the card that triggered the AI action.
+      * @param {number} targetColumnIndex - The column index where new cards should be created.
+      * @param {string} parentIdForNewCards - The parent ID for the new cards.
+      */
+     function processMultiPartResponse(fullResponse, placeholderCardId, placeholderTextarea, originalCardId, targetColumnIndex, parentIdForNewCards) {
+         const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
+         let lastCardId = null; // Keep track of the last card created/updated
+
+         if (parts.length > 0) {
+             // --- Part 1: Reuse Placeholder Card ---
+             const firstPartContent = parts[0];
+             if (data.updateCardContentData(placeholderCardId, firstPartContent)) {
+                 if (placeholderTextarea) {
+                     placeholderTextarea.value = firstPartContent;
+                     placeholderTextarea.classList.remove('ai-loading');
+                     autoResizeTextarea({ target: placeholderTextarea });
+                 }
+                 lastCardId = placeholderCardId;
+                 console.log(`AI Multi-Part: Reused placeholder ${placeholderCardId} for first part.`);
+             } else {
+                 console.error("Could not update placeholder card data for multi-part response (maybe deleted?).");
+                 handleDeleteCard(placeholderCardId); // Attempt cleanup
+             }
+
+             // --- Parts 2+: Create New Cards ---
+             if (parts.length > 1 && lastCardId) {
+                 let insertAfterCardId = lastCardId;
+                 parts.slice(1).forEach((partContent) => {
+                     let insertBeforeId = null;
+                     const insertAfterCard = data.getCard(insertAfterCardId);
+                     if (insertAfterCard) {
+                         const siblings = data.getSiblingCards(insertAfterCardId);
+                         const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
+                         if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                             insertBeforeId = siblings[currentIndex + 1].id;
+                         }
+                     }
+                     const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
+                     if (newChildId) {
+                         lastCardId = newChildId;
+                         insertAfterCardId = newChildId;
+                     }
+                 });
+             }
+         } else {
+             // --- No Valid Parts ---
+             console.log("AI Multi-Part: No valid parts returned, deleting placeholder.");
+             handleDeleteCard(placeholderCardId);
+         }
+
+         // --- Final Steps ---
+         data.saveProjectsData(); // Save all changes.
+         // Update the group header display for the *original* parent card.
+         updateGroupHeaderDisplay(parentIdForNewCards); // Use parentIdForNewCards (which is originalCardId for breakdown/custom)
+         console.log(`AI Multi-Part processing completed for original card ${originalCardId}. Last created/updated card: ${lastCardId}`);
+
+         // Focus the first card created/updated, if it exists.
+         const firstCardIdToFocus = (parts.length > 0 && placeholderCardId === lastCardId) ? placeholderCardId : lastCardId;
+         if (firstCardIdToFocus && data.getCard(firstCardIdToFocus)) {
+             requestAnimationFrame(() => {
+                 focusCardTextarea(firstCardIdToFocus, 'start');
+             });
+         }
      }
 
-     // --- AI Action Handlers ---
+
+     /**
+      * Generic helper function to execute an AI action.
+      * Handles common logic like checks, UI locking, placeholder creation,
+      * AI service calls, and basic callback handling.
+      *
+      * @param {string} cardId - The ID of the source card.
+      * @param {string} aiServiceMethodName - The name of the method to call on aiService (e.g., 'generateSummary').
+      * @param {object} options - Configuration options.
+      * @param {number} options.targetColumnIndex - The column index for the new card(s).
+      * @param {string | null} options.parentIdForNewCards - The parent ID for the new card(s).
+      * @param {string | null} options.insertBeforeId - The ID of the card before which the new card should be inserted.
+      * @param {boolean} [options.requiresContentCheck=false] - Whether the source card must have content.
+      * @param {string} [options.userPrompt] - Optional user prompt (for custom actions).
+      * @param {boolean} [options.useMultiPartResponseHandler=false] - Whether to use processMultiPartResponse in onDone.
+      */
+     async function executeAiAction(cardId, aiServiceMethodName, options) {
+         const {
+             targetColumnIndex,
+             parentIdForNewCards,
+             insertBeforeId,
+             requiresContentCheck = false,
+             userPrompt = null, // Only used by generateCustom
+             useMultiPartResponseHandler = false
+         } = options;
+
+         // 1. --- Prerequisite Checks ---
+         if (!aiService.areAiSettingsValid()) {
+             alert("Please configure AI settings first.");
+             return;
+         }
+         if (isAiActionInProgress) {
+             alert("Please wait for the current AI action to complete.");
+             return;
+         }
+         const card = data.getCard(cardId);
+         if (!card) {
+             console.error(`executeAiAction: Card data not found for ID ${cardId}`);
+             return;
+         }
+         if (requiresContentCheck && !card.content?.trim()) {
+             alert(`Card #${cardId.slice(-4)} has no content for this action.`);
+             return;
+         }
+
+         // 2. --- Lock UI ---
+         disableConflictingActions();
+
+         // 3. --- Create Placeholder Card ---
+         // Note: Even for multi-part responses, we start with one placeholder.
+         // The multi-part handler will reuse it for the first part.
+         const placeholderCardId = handleAddCard(targetColumnIndex, parentIdForNewCards, AI_PLACEHOLDER_TEXT, insertBeforeId);
+         if (!placeholderCardId) {
+             console.error(`executeAiAction: Failed to create placeholder card for action ${aiServiceMethodName}`);
+             enableConflictingActions(); // Unlock UI if placeholder creation failed
+             return;
+         }
+
+         const placeholderCardEl = getCardElement(placeholderCardId);
+         const placeholderTextarea = placeholderCardEl?.querySelector('.card-content');
+         if (!placeholderTextarea) {
+             console.error(`executeAiAction: Could not find textarea for placeholder card ${placeholderCardId}`);
+             // Attempt to clean up data if UI element is missing
+             data.updateCardContentData(placeholderCardId, "Error: Could not find card textarea.");
+             data.saveProjectsData();
+             enableConflictingActions(); // Unlock UI
+             return;
+         }
+
+         // 4. --- Call AI Service ---
+         try {
+             const aiServiceArgs = {
+                 card: card, // Always pass the original card context
+                 onChunk: (delta) => {
+                     if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) {
+                         placeholderTextarea.value = ''; // Clear placeholder on first chunk
+                     }
+                     placeholderTextarea.value += delta;
+                     autoResizeTextarea({ target: placeholderTextarea });
+                 },
+                 onError: (error) => {
+                     console.error(`AI Error (${aiServiceMethodName} for card ${cardId}):`, error);
+                     placeholderTextarea.value = `AI Error: ${error.message}`;
+                     placeholderTextarea.classList.remove('ai-loading');
+                     // Update data model with error and save
+                     data.updateCardContentData(placeholderCardId, placeholderTextarea.value);
+                     data.saveProjectsData();
+                     enableConflictingActions(); // Unlock UI on error
+                 },
+                 onDone: (finalContent) => {
+                     placeholderTextarea.classList.remove('ai-loading');
+
+                     if (useMultiPartResponseHandler) {
+                         // Delegate complex response processing
+                         processMultiPartResponse(finalContent, placeholderCardId, placeholderTextarea, cardId, targetColumnIndex, parentIdForNewCards);
+                     } else {
+                         // Default handling for single-card output
+                         if (data.updateCardContentData(placeholderCardId, finalContent)) {
+                             data.saveProjectsData(); // Save the final content
+                             updateGroupHeaderDisplay(placeholderCardId); // Update header if it's a parent
+                         }
+                         console.log(`AI Action (${aiServiceMethodName}) completed. New card: ${placeholderCardId}`);
+                         // Optionally focus
+                         focusCardTextarea(placeholderCardId, 'start');
+                     }
+                     enableConflictingActions(); // Unlock UI on success
+                 }
+             };
+
+             // Add userPrompt only if the method expects it (currently just generateCustom)
+             if (userPrompt !== null && aiServiceMethodName === 'generateCustom') {
+                 aiServiceArgs.userPrompt = userPrompt;
+             }
+
+             // Dynamically call the specified AI service method
+             if (typeof aiService[aiServiceMethodName] === 'function') {
+                 aiService[aiServiceMethodName](aiServiceArgs);
+             } else {
+                 throw new Error(`Invalid aiService method name: ${aiServiceMethodName}`);
+             }
+
+         } catch (error) {
+             console.error(`Error executing AI action ${aiServiceMethodName} for card ${cardId}:`, error);
+             if (placeholderTextarea) { // Check if textarea exists before updating
+                 placeholderTextarea.value = `Error during AI call setup: ${error.message}`;
+                 placeholderTextarea.classList.remove('ai-loading');
+                 data.updateCardContentData(placeholderCardId, placeholderTextarea.value);
+                 data.saveProjectsData();
+             }
+             enableConflictingActions(); // Ensure UI is unlocked even if setup fails
+         }
+     }
+
+
+     // --- AI Action Handlers (Refactored) ---
 
      function handleAiSummarize(cardId) {
-         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-         if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
-
          const card = data.getCard(cardId);
-         if (!card || !card.content?.trim()) { alert("Card has no content to summarize."); return; }
+         if (!card) return;
 
-         disableConflictingActions(); // Lock UI
-
-         // Find insertBeforeId for the new card (immediately after the current card)
+         // Determine insertion point (after current card)
          let insertBeforeId = null;
          const siblings = data.getSiblingCards(cardId);
          const currentIndex = siblings.findIndex(c => c.id === cardId);
@@ -1418,476 +1622,117 @@ document.addEventListener('DOMContentLoaded', () => {
              insertBeforeId = siblings[currentIndex + 1].id;
          }
 
-         // Create the new placeholder card using handleAddCard
-         const newCardId = handleAddCard(card.columnIndex, card.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
-         if (!newCardId) {
-             enableConflictingActions(); // Unlock if card creation failed
-             return;
-         }
-
-         const newCardEl = getCardElement(newCardId);
-         const newTextarea = newCardEl?.querySelector('.card-content');
-         if (!newTextarea) {
-             console.error("Could not find textarea for new summary card:", newCardId);
-             // Update data directly if textarea not found
-             data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
-             data.saveProjectsData();
-             enableConflictingActions(); // Unlock if card creation failed
-             return;
-         }
-
-         // Call aiService, targeting the new card
-         aiService.generateSummary({
-             card: card, // Pass the original card for context (children, parent, etc.)
-             onChunk: (delta) => {
-                 if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
-                     newTextarea.value = ''; // Clear placeholder
-                 }
-                 newTextarea.value += delta;
-                 autoResizeTextarea({ target: newTextarea });
-             },
-             onError: (error) => {
-                newTextarea.value = `AI Error: ${error.message}`;
-                newTextarea.classList.remove('ai-loading');
-                // Update data model with error
-                data.updateCardContentData(newCardId, newTextarea.value);
-                data.saveProjectsData();
-                enableConflictingActions(); // Unlock UI on error
-             },
-             onDone: (finalContent) => {
-                 newTextarea.classList.remove('ai-loading');
-                 // Update the *new* card's data model with the final content
-                 if (data.updateCardContentData(newCardId, finalContent)) {
-                     data.saveProjectsData(); // Save the new card's content
-                     // Update the group header for the new card that created by AI
-                     updateGroupHeaderDisplay(newCardId);
-                 }
-                 enableConflictingActions(); // Unlock UI
-                 console.log(`AI Summarize completed. New card: ${newCardId}`);
-                 // Optionally focus the new card
-                 // focusCardTextarea(newCardId, 'end');
-             }
+         executeAiAction(cardId, 'generateSummary', {
+             targetColumnIndex: card.columnIndex, // Summarize in the same column
+             parentIdForNewCards: card.parentId, // Same parent as original
+             insertBeforeId: insertBeforeId,
+             requiresContentCheck: true,
+             useMultiPartResponseHandler: false // Summarize typically produces single output
          });
      }
 
      function handleAiContinue(cardId) {
-        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+         const card = data.getCard(cardId);
+         if (!card) return;
 
-        const currentCard = data.getCard(cardId); // Still need current card for column/parent info
-        if (!currentCard) return;
+         // Determine insertion point (after current card)
+         let insertBeforeId = null;
+         const siblings = data.getSiblingCards(cardId);
+         const currentIndex = siblings.findIndex(c => c.id === cardId);
+         if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+             insertBeforeId = siblings[currentIndex + 1].id;
+         }
 
-        disableConflictingActions(); // Lock UI
-
-        // Find insertBeforeId using data helpers
-        let insertBeforeId = null;
-        const siblings = data.getSiblingCards(cardId); // Need siblings to find insertion point
-        const currentIndex = siblings.findIndex(c => c.id === cardId);
-        if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-            insertBeforeId = siblings[currentIndex + 1].id;
-        }
-
-        // Use handleAddCard to create placeholder and update DOM/Data
-        // Pass currentCard's column and parentId
-        const newCardId = handleAddCard(currentCard.columnIndex, currentCard.parentId, AI_PLACEHOLDER_TEXT, insertBeforeId);
-        if (!newCardId) {
-            enableConflictingActions(); // Unlock if card creation failed
-            return;
-        }
-
-        const newCardEl = getCardElement(newCardId);
-        const newTextarea = newCardEl?.querySelector('.card-content');
-        if (!newTextarea) {
-             console.error("Could not find textarea for new AI card:", newCardId);
-             // Update data directly if textarea not found
-             data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
-             data.saveProjectsData();
-             enableConflictingActions(); // Unlock if card creation failed
-             return;
-        }
-
-        // Call aiService, passing the card object and callbacks
-        aiService.generateContinuation({
-            card: currentCard, // Pass the full card object
-            onChunk: (delta) => {
-                if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
-                    newTextarea.value = '';
-                }
-                newTextarea.value += delta;
-                autoResizeTextarea({ target: newTextarea });
-            },
-            onError: (error) => {
-                newTextarea.value = `AI Error: ${error.message}`;
-                newTextarea.classList.remove('ai-loading');
-                // Update data model with error
-                data.updateCardContentData(newCardId, newTextarea.value);
-                data.saveProjectsData();
-                enableConflictingActions(); // Unlock UI on error
-            },
-            onDone: (finalContent) => {
-                 newTextarea.classList.remove('ai-loading');
-                 // Update data model with final content
-                 if (data.updateCardContentData(newCardId, finalContent)) {
-                     data.saveProjectsData();
-                     // Update the group header for the new card that created by AI
-                     updateGroupHeaderDisplay(newCardId);
-                 }
-                 enableConflictingActions(); // Unlock UI on success
-                 console.log("AI Continue completed for card:", newCardId);
-            }
-        });
-    }
-
-    function handleAiBreakdown(cardId) {
-        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
-
-        const card = data.getCard(cardId);
-        if (!card || !card.content?.trim()) { alert("Card has no content to breakdown."); return; }
-
-        disableConflictingActions(); // Lock UI
-
-        const targetColumnIndex = card.columnIndex + 1;
-        const parentIdForNewCards = card.id;
-
-        // Create a single temporary placeholder using handleAddCard
-        const tempCardId = handleAddCard(targetColumnIndex, parentIdForNewCards, AI_PLACEHOLDER_TEXT);
-        if (!tempCardId) {
-            enableConflictingActions(); // Unlock if card creation failed
-            return;
-        }
-
-        const tempCardEl = getCardElement(tempCardId);
-        const tempTextarea = tempCardEl?.querySelector('.card-content');
-        if (!tempTextarea) {
-             console.error("Could not find textarea for temp AI card:", tempCardId);
-             data.updateCardContentData(tempCardId, "Error: Could not find card textarea.");
-             data.saveProjectsData();
-             enableConflictingActions(); // Unlock if card creation failed
-             return;
-        }
-
-        aiService.generateBreakdown({
-            card: card, // Pass the full card object
-            onChunk: (delta) => {
-                 if (tempTextarea.value === AI_PLACEHOLDER_TEXT) {
-                     tempTextarea.value = '';
-                 }
-                 tempTextarea.value += delta;
-                 autoResizeTextarea({ target: tempTextarea });
-            },
-            onError: (error) => {
-                tempTextarea.value = `AI Error: ${error.message}`;
-                tempTextarea.classList.remove('ai-loading');
-                data.updateCardContentData(tempCardId, tempTextarea.value); // Save error
-                data.saveProjectsData();
-                 enableConflictingActions(); // Unlock UI on error
-             },
-             onDone: (fullResponse) => {
-                 // --- AI Response Processing for Breakdown ---
-                 // Split the AI response into potential multiple cards based on the separator.
-                 const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
-                 let lastCardId = null; // Keep track of the last card created/updated
-
-                 if (parts.length > 0) {
-                     // --- Part 1: Reuse Placeholder Card ---
-                     // Use the initially created temporary placeholder card for the first part of the response.
-                     const firstPartContent = parts[0];
-                     // Update the data model for the placeholder card.
-                     if (data.updateCardContentData(tempCardId, firstPartContent)) {
-                         // If data update was successful, update the UI as well.
-                         if (tempTextarea) {
-                             tempTextarea.value = firstPartContent;
-                             tempTextarea.classList.remove('ai-loading');
-                             autoResizeTextarea({ target: tempTextarea });
-                         }
-                         lastCardId = tempCardId; // Mark this as the last processed card
-                         console.log(`AI Breakdown: Reused temp card ${tempCardId} for first part.`);
-                     } else {
-                         // Handle edge case where the temp card might have been deleted between creation and now.
-                         console.error("Could not update temp card data for AI Breakdown (maybe deleted?).");
-                         handleDeleteCard(tempCardId); // Attempt to clean up the temp card if it still exists
-                     }
-
-                     // --- Parts 2+: Create New Cards ---
-                     // If there are more parts in the response, create new cards for them.
-                     if (parts.length > 1 && lastCardId) { // Ensure the first part was successfully processed
-                         let insertAfterCardId = lastCardId; // Start inserting after the first (reused) card
-                         parts.slice(1).forEach((partContent) => {
-                             // Determine the correct insertion point (insertBeforeId) for the new card
-                             // to maintain order relative to siblings created in this batch.
-                             let insertBeforeId = null;
-                             const insertAfterCard = data.getCard(insertAfterCardId);
-                             if (insertAfterCard) {
-                                 const siblings = data.getSiblingCards(insertAfterCardId);
-                                 const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
-                                 // Find the ID of the card immediately following the 'insertAfterCardId'
-                                 if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                                     insertBeforeId = siblings[currentIndex + 1].id;
-                                 }
-                             }
-                             // Use handleAddCard to create the new card, add it to data, and render it in the DOM.
-                             // It will be placed before 'insertBeforeId' if found, otherwise appended.
-                             const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
-                             if (newChildId) {
-                                 // Update tracking for the next iteration
-                                 lastCardId = newChildId;
-                                 insertAfterCardId = newChildId;
-                             }
-                         });
-                     }
-                 } else {
-                     // --- No Valid Parts ---
-                     // If the AI response was empty or only contained separators, delete the placeholder card.
-                     console.log("AI Breakdown: No valid parts returned, deleting temp card.");
-                     handleDeleteCard(tempCardId); // Use the standard delete handler
-                 }
-
-                 // --- Final Steps ---
-                 data.saveProjectsData(); // Save all changes made during response processing.
-                 // Update the group header display for the *original* parent card, as its children changed.
-                 updateGroupHeaderDisplay(cardId); // Use original card ID here
-                 console.log(`AI Breakdown completed for original card ${cardId}. Last created/updated card: ${lastCardId}`);
-
-                 // Focus the first card that was created or updated, if it still exists.
-                 if (lastCardId && data.getCard(lastCardId)) { // Check if lastCardId is set and card exists
-                     requestAnimationFrame(() => {
-                         focusCardTextarea(lastCardId, 'start'); // Focus the first part
-                     });
-                 } else if (tempCardId && data.getCard(tempCardId) && parts.length === 1) {
-                     // Fallback to focusing the reused temp card if it was the only one and still exists
-                      requestAnimationFrame(() => {
-                         focusCardTextarea(tempCardId, 'start');
-                     });
-                 }
-                 enableConflictingActions(); // Re-enable UI interactions.
-             }
+         executeAiAction(cardId, 'generateContinuation', {
+             targetColumnIndex: card.columnIndex, // Continue in the same column
+             parentIdForNewCards: card.parentId, // Same parent as original
+             insertBeforeId: insertBeforeId,
+             requiresContentCheck: false, // Can continue from empty card
+             useMultiPartResponseHandler: false // Continue typically produces single output
          });
-    }
+     }
 
-    function handleAiExpand(cardId) {
-        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+     function handleAiBreakdown(cardId) {
+         const card = data.getCard(cardId);
+         if (!card) return;
 
-        const card = data.getCard(cardId);
-        if (!card || !card.content?.trim()) { alert("Card has no content to expand."); return; }
+         executeAiAction(cardId, 'generateBreakdown', {
+             targetColumnIndex: card.columnIndex + 1, // Breakdown into the next column
+             parentIdForNewCards: card.id, // Original card becomes the parent
+             insertBeforeId: null, // Append new cards to the end of the group
+             requiresContentCheck: true,
+             useMultiPartResponseHandler: true // Breakdown often produces multiple parts
+         });
+     }
 
-        disableConflictingActions(); // Lock UI
+     function handleAiExpand(cardId) {
+         const card = data.getCard(cardId);
+         if (!card) return;
 
-        const targetColumnIndex = card.columnIndex + 1;
-        const parentIdForNewCard = card.id;
+         executeAiAction(cardId, 'generateExpand', {
+             targetColumnIndex: card.columnIndex + 1, // Expand into the next column
+             parentIdForNewCards: card.id, // Original card becomes the parent
+             insertBeforeId: null, // Append new card to the end of the group
+             requiresContentCheck: true,
+             useMultiPartResponseHandler: false // Expand typically produces single output
+         });
+     }
 
-        // Use handleAddCard to create placeholder
-        const newCardId = handleAddCard(targetColumnIndex, parentIdForNewCard, AI_PLACEHOLDER_TEXT);
-        if (!newCardId) {
-            enableConflictingActions(); // Unlock if card creation failed
-            return;
-        }
+     function handleAiCustom(cardId) {
+         const card = data.getCard(cardId);
+         if (!card) return;
+         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+         if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
 
-        const newCardEl = getCardElement(newCardId);
-        const newTextarea = newCardEl?.querySelector('.card-content');
-        if (!newTextarea) {
-            console.error("Could not find textarea for new AI card:", newCardId);
-            data.updateCardContentData(newCardId, "Error: Could not find card textarea.");
-            data.saveProjectsData();
-            enableConflictingActions(); // Unlock if card creation failed
-            return;
-        }
+         // --- Modal Implementation (UI Logic - Kept separate from executeAiAction) ---
+         const overlay = document.createElement('div');
+         overlay.className = 'modal-overlay';
+         const modal = document.createElement('div');
+         modal.className = 'modal-content';
+         modal.innerHTML = `
+             <h4>Custom AI Prompt</h4>
+             <p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
+             <textarea id="custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>
+             <div class="modal-actions">
+                 <button id="custom-prompt-cancel">Cancel</button>
+                 <button id="custom-prompt-submit" class="primary">Submit</button>
+             </div>
+         `;
+         overlay.appendChild(modal);
+         document.body.appendChild(overlay);
 
-        aiService.generateExpand({
-            card: card, // Pass the full card object
-            onChunk: (delta) => {
-                if (newTextarea.value === AI_PLACEHOLDER_TEXT) {
-                    newTextarea.value = '';
-                }
-                newTextarea.value += delta;
-                autoResizeTextarea({ target: newTextarea });
-            },
-            onError: (error) => {
-                newTextarea.value = `AI Error: ${error.message}`;
-                newTextarea.classList.remove('ai-loading');
-                data.updateCardContentData(newCardId, newTextarea.value); // Save error
-                data.saveProjectsData();
-                enableConflictingActions(); // Unlock UI on error
-            },
-            onDone: (finalContent) => {
-                 newTextarea.classList.remove('ai-loading');
-                 // Update data model with final content
-                 if (data.updateCardContentData(newCardId, finalContent)) { // Save final content
-                     data.saveProjectsData();
-                     // Update the group header for the new card
-                     updateGroupHeaderDisplay(newCardId);
-                 }
-                 enableConflictingActions(); // Unlock UI on success
-                 console.log("AI Expand completed for card:", newCardId);
-            }
-        });
-    }
+         const promptInput = modal.querySelector('#custom-prompt-input');
+         const cancelButton = modal.querySelector('#custom-prompt-cancel');
+         const submitButton = modal.querySelector('#custom-prompt-submit');
+         promptInput.focus();
 
-    function handleAiCustom(cardId) {
-        if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-        if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+         const closeModal = () => { if (overlay.parentNode === document.body) document.body.removeChild(overlay); };
 
-        const card = data.getCard(cardId);
-        if (!card) return;
+         cancelButton.addEventListener('click', closeModal);
+         submitButton.addEventListener('click', () => {
+             const userPrompt = promptInput.value.trim();
+             if (!userPrompt) { alert("Please enter a prompt."); return; }
+             closeModal();
 
-        // --- Modal Implementation (UI Logic) ---
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        const modal = document.createElement('div');
-        modal.className = 'modal-content';
-        modal.innerHTML = `
-            <h4>Custom AI Prompt</h4>
-            <p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
-            <textarea id="custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>
-            <div class="modal-actions">
-                <button id="custom-prompt-cancel">Cancel</button>
-                <button id="custom-prompt-submit" class="primary">Submit</button>
-            </div>
-        `;
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
-
-        const promptInput = modal.querySelector('#custom-prompt-input');
-        const cancelButton = modal.querySelector('#custom-prompt-cancel');
-        const submitButton = modal.querySelector('#custom-prompt-submit');
-        promptInput.focus();
-
-        const closeModal = () => { if (overlay.parentNode === document.body) document.body.removeChild(overlay); };
-
-        cancelButton.addEventListener('click', closeModal);
-        submitButton.addEventListener('click', () => {
-            const userPrompt = promptInput.value.trim();
-            if (!userPrompt) { alert("Please enter a prompt."); return; }
-            closeModal();
-
-            disableConflictingActions(); // Lock UI
-
-            // Proceed with AI call
-            const targetColumnIndex = card.columnIndex + 1;
-            const parentIdForNewCard = card.id;
-
-            // Use handleAddCard for placeholder
-            const placeholderCardId = handleAddCard(targetColumnIndex, parentIdForNewCard, AI_PLACEHOLDER_TEXT);
-            if (!placeholderCardId) {
-                enableConflictingActions(); // Unlock if card creation failed
-                return;
-            }
-
-            const placeholderCardEl = getCardElement(placeholderCardId);
-            const placeholderTextarea = placeholderCardEl?.querySelector('.card-content');
-             if (!placeholderTextarea) {
-                 console.error("Could not find textarea for new AI card:", placeholderCardId);
-                 data.updateCardContentData(placeholderCardId, "Error: Could not find card textarea.");
-                 data.saveProjectsData();
-                 enableConflictingActions(); // Unlock if card creation failed
-                 return;
-             }
-
-            aiService.generateCustom({
-                card: card, // Pass the full card object
-                userPrompt: userPrompt,
-                onChunk: (delta) => {
-                    if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) {
-                        placeholderTextarea.value = '';
-                    }
-                    placeholderTextarea.value += delta;
-                    autoResizeTextarea({ target: placeholderTextarea });
-                },
-                onError: (error) => {
-                    placeholderTextarea.value = `AI Error: ${error.message}`;
-                    placeholderTextarea.classList.remove('ai-loading');
-                    data.updateCardContentData(placeholderCardId, placeholderTextarea.value); // Save error
-                    data.saveProjectsData();
-                 enableConflictingActions(); // Unlock UI on error
-                 },
-                 onDone: (finalContent) => {
-                     // --- AI Response Processing for Custom Prompt ---
-                     // Similar to Breakdown, split the response by the separator for potential multi-card output.
-                     const parts = finalContent.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
-                     let lastCardId = null; // Track the last card created/updated
-
-                     if (parts.length > 0) {
-                         // --- Part 1: Reuse Placeholder Card ---
-                         // Use the placeholder card created before the AI call for the first part.
-                         const firstPartContent = parts[0];
-                         // Update the placeholder card's data.
-                         if (data.updateCardContentData(placeholderCardId, firstPartContent)) {
-                             // Update the UI if data update was successful.
-                             if (placeholderTextarea) {
-                                 placeholderTextarea.value = firstPartContent;
-                                 placeholderTextarea.classList.remove('ai-loading');
-                                 autoResizeTextarea({ target: placeholderTextarea });
-                             }
-                             lastCardId = placeholderCardId; // Mark as the last processed card
-                             console.log(`AI Custom: Reused placeholder ${placeholderCardId} for first part.`);
-                         } else {
-                              // Handle edge case: placeholder might have been deleted.
-                              console.error("Could not update placeholder card data for AI Custom (maybe deleted?).");
-                              handleDeleteCard(placeholderCardId); // Attempt cleanup
-                         }
-
-                         // --- Parts 2+: Create New Cards ---
-                         // If more parts exist, create new cards for them.
-                         if (parts.length > 1 && lastCardId) { // Ensure first part was processed
-                             let insertAfterCardId = lastCardId; // Start inserting after the first card
-                             parts.slice(1).forEach((partContent) => {
-                                 // Determine the correct insertion point relative to siblings.
-                                 let insertBeforeId = null;
-                                 const insertAfterCard = data.getCard(insertAfterCardId);
-                                 if (insertAfterCard) {
-                                     const siblings = data.getSiblingCards(insertAfterCardId);
-                                     const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
-                                     if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                                         insertBeforeId = siblings[currentIndex + 1].id;
-                                     }
-                                 }
-                                 // Create the new card using handleAddCard (updates data and DOM).
-                                 const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCard, partContent, insertBeforeId);
-                                 if (newChildId) {
-                                     // Update tracking for the next iteration
-                                     lastCardId = newChildId;
-                                     insertAfterCardId = newChildId;
-                                 }
-                             });
-                         }
-                     } else {
-                         // --- No Valid Parts ---
-                         // If the response was empty or only separators, delete the placeholder.
-                         console.log("AI Custom: No valid parts returned, deleting placeholder.");
-                         handleDeleteCard(placeholderCardId);
-                     }
-
-                     // --- Final Steps ---
-                     data.saveProjectsData(); // Save all changes.
-                     // Update the group header display for the *original* parent card.
-                     updateGroupHeaderDisplay(cardId); // Use original card ID
-                     console.log(`AI Custom completed for original card ${cardId}. Last created/updated card: ${lastCardId}`);
-
-                     // Focus the first card created/updated, if it exists.
-                     if (lastCardId && data.getCard(lastCardId)) { // Check if lastCardId is set and card exists
-                         requestAnimationFrame(() => {
-                             focusCardTextarea(lastCardId, 'start');
-                         });
-                      } else if (placeholderCardId && data.getCard(placeholderCardId) && parts.length === 1) {
-                         // Fallback to focusing the reused placeholder if it was the only one and still exists
-                         requestAnimationFrame(() => {
-                             focusCardTextarea(placeholderCardId, 'start');
-                         });
-                     }
-                     enableConflictingActions(); // Re-enable UI interactions.
-                 }
+             // --- Call executeAiAction after getting prompt ---
+             executeAiAction(cardId, 'generateCustom', {
+                 targetColumnIndex: card.columnIndex + 1, // Custom prompt usually goes to next column
+                 parentIdForNewCards: card.id, // Original card is parent
+                 insertBeforeId: null, // Append to end of group
+                 requiresContentCheck: false, // Allow custom prompt on empty card
+                 userPrompt: userPrompt, // Pass the collected prompt
+                 useMultiPartResponseHandler: true // Custom prompts might produce multiple parts
              });
-        });
+         });
 
-        promptInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitButton.click(); }
-            else if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
-        });
-        overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-    }
+         promptInput.addEventListener('keydown', (e) => {
+             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitButton.click(); }
+             else if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+         });
+         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
+     }
 
-    // --- AI Feature Visibility ---
+     // --- AI Feature Visibility ---
     function updateAiFeatureVisibility(isValid) {
         document.body.classList.toggle('ai-ready', isValid);
         document.querySelectorAll('.ai-feature button').forEach(btn => {
