@@ -25,6 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const AI_PLACEHOLDER_TEXT = "AI is thinking..."; // Keep UI constant here
     const AI_RESPONSE_SEPARATOR = '---'; // Keep UI constant here
     const SIDEBAR_COLLAPSED_KEY = 'sidebarCollapsed';
+    const STORAGE_KEY_ONBOARDING = 'onboardingComplete';
+    const DEFAULT_ONBOARDING_PROJECT_URL = 'examples/new-onboarding.json'; // Relative path if served
 
     // --- State ---
     let isAiActionInProgress = false; // Flag to prevent concurrent conflicting actions
@@ -826,6 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Import Functions ---
 
     async function processImportedData(jsonDataString, sourceDescription) {
+        let success = false; // Track success
         try {
             const importedFullObject = JSON.parse(jsonDataString);
 
@@ -846,16 +849,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (newProject) {
                 data.saveProjectsData(); // Save the updated projects list
                 handleSwitchProject(newProject.id); // Switch to the newly imported project
-                alert(`Project "${newTitle}" imported successfully from ${sourceDescription}.`);
                 console.log(`Imported project ${newProject.id} from ${sourceDescription}`);
             } else {
                 alert(`Import failed: Could not add the project data from ${sourceDescription}.`);
             }
+            success = true; // Mark as successful if project was added
 
         } catch (error) {
             console.error(`Error processing imported data from ${sourceDescription}:`, error);
             alert(`Import failed: Could not parse JSON data from ${sourceDescription}. Error: ${error.message}`);
+            success = false; // Mark as failed on error
         }
+        return success; // Return success status
     }
 
 
@@ -883,22 +888,35 @@ document.addEventListener('DOMContentLoaded', () => {
         input.click(); // Trigger file selection dialog
     }
 
-    async function handleImportFromUrl() {
-        const url = prompt("Enter the URL of the project JSON file:");
-        if (!url) return; // User cancelled
-
+    /**
+     * Fetches project data from a URL and processes it.
+     * @param {string} url - The URL to fetch the JSON from.
+     * @param {string} sourceDescription - Description for logging/alerts (e.g., 'default onboarding', 'URL "..."').
+     * @returns {Promise<boolean>} - True if import was successful, false otherwise.
+     */
+    async function importProjectFromUrl(url, sourceDescription) {
+        console.log(`Attempting to import project from ${sourceDescription}: ${url}`);
         try {
             const response = await fetch(url);
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
             }
             const jsonDataString = await response.text(); // Get response as text
-            processImportedData(jsonDataString, `URL "${url}"`);
-
+            // processImportedData handles alerts and returns success status
+            return await processImportedData(jsonDataString, sourceDescription);
         } catch (error) {
-            console.error("Error fetching or processing URL:", error);
-            alert(`Failed to import from URL: ${error.message}. Check the URL and ensure it points to a valid JSON file with correct CORS headers if applicable.`);
+            console.error(`Error fetching or processing ${sourceDescription} from ${url}:`, error);
+            alert(`Failed to import from ${sourceDescription}: ${error.message}. Check the URL and network connection.`);
+            return false; // Indicate failure
         }
+    }
+
+    // Handler for the user-initiated URL import button
+    async function handleImportFromUrl() {
+        const url = prompt("Enter the URL of the project JSON file:");
+        if (!url) return; // User cancelled
+        // Call the refactored function, alerts are handled within it
+        await importProjectFromUrl(url, `URL "${url}"`);
     }
 
 
@@ -1786,11 +1804,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // --- Initialization ---
-    function initializeApp() {
+    async function initializeApp() { // Make async to await onboarding import
         console.log("Initializing App...");
 
         // 1. Load Data
         data.loadProjectsData(); // Loads projects and sets activeProjectId in data module
+
+        // --- Onboarding Check ---
+        const isOnboardingComplete = localStorage.getItem(STORAGE_KEY_ONBOARDING);
+        if (!isOnboardingComplete) {
+            console.log("New user detected (no onboarding key found). Attempting default project import...");
+            try {
+                // Attempt to import the default project
+                await importProjectFromUrl(DEFAULT_ONBOARDING_PROJECT_URL, STORAGE_KEY_ONBOARDING);
+                // Set the key *after* the attempt, regardless of success/failure
+                localStorage.setItem(STORAGE_KEY_ONBOARDING, new Date().toISOString());
+                console.log("Onboarding key set in localStorage.");
+                // Reload data *after* potential import and before rendering
+                data.loadProjectsData();
+            } catch (error) {
+                console.error("Error during onboarding import process:", error);
+                // Still set the key even if there was an error during the process itself
+                localStorage.setItem(STORAGE_KEY_ONBOARDING, new Date().toISOString());
+                console.warn("Onboarding key set in localStorage despite import error.");
+            }
+        }
+        // --- End Onboarding Check ---
 
         // 2. Initialize AI Service (passes UI elements and callback)
         aiService.initializeAiSettings({
