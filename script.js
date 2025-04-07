@@ -582,7 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             item.querySelector('.export-project-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
-                handleExportProject(project.id); // Use handler
+                handleExportProject(project.id, e); // Pass event to handler
             });
             item.querySelector('.delete-project-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -683,7 +683,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handleExportProject(projectId) {
+    // --- Export Functions ---
+
+    function exportProjectAsText(projectId) {
         const project = data.projects[projectId];
         if (!project) return;
 
@@ -705,7 +707,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     .sort((a, b) => a.order - b.order);
         };
 
-
         function traverse(cardId) {
             const card = getCardLocal(cardId);
             if (!card) return;
@@ -722,10 +723,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const rootCards = getColumnCardsLocal(0);
         rootCards.forEach(rootCard => traverse(rootCard.id));
 
-        // File download logic (remains the same)
+        // File download logic
         const blob = new Blob([content.trim()], { type: 'text/plain;charset=utf-8' });
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const filename = `ProjectExport_${project.title.replace(/\s+/g, '_')}_${timestamp}.txt`;
+        // Use UTC for timestamp consistency, replace invalid chars
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T').replace('Z', 'Z');
+        const filename = `ProjectExport_${project.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.txt`;
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = filename;
@@ -733,7 +735,88 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
-        console.log(`Exported project: ${project.title}`);
+        console.log(`Exported project as TEXT: ${project.title}`);
+    }
+
+    function exportProjectAsJson(projectId) {
+        const project = data.projects[projectId];
+        if (!project) return;
+
+        // Get the raw project data as stored (or intended to be stored)
+        const projectDataToExport = project.data; // This is the { columns: [...], cards: {...} } structure
+
+        try {
+            const jsonContent = JSON.stringify(projectDataToExport, null, 2); // Pretty print JSON
+            const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
+            // Use UTC for timestamp consistency, replace invalid chars
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T').replace('Z', 'Z');
+            const filename = `ProjectExport_${project.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.json`;
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            console.log(`Exported project as JSON: ${project.title}`);
+        } catch (error) {
+            console.error("Error exporting project as JSON:", error);
+            alert("Failed to export project as JSON. Check console for details.");
+        }
+    }
+
+    function displayExportOptions(projectId, buttonElement) {
+        // Remove any existing menus
+        const existingMenu = document.getElementById('export-options-menu');
+        if (existingMenu) existingMenu.remove();
+
+        const menu = document.createElement('div');
+        menu.id = 'export-options-menu';
+        menu.className = 'export-options-menu'; // Add class for styling
+
+        const textButton = document.createElement('button');
+        textButton.textContent = 'Export Text';
+        textButton.onclick = (e) => {
+            e.stopPropagation();
+            exportProjectAsText(projectId);
+            menu.remove();
+        };
+
+        const jsonButton = document.createElement('button');
+        jsonButton.textContent = 'Export JSON';
+        jsonButton.onclick = (e) => {
+            e.stopPropagation();
+            exportProjectAsJson(projectId);
+            menu.remove();
+        };
+
+        menu.appendChild(textButton);
+        menu.appendChild(jsonButton);
+
+        // Positioning relative to the button
+        const rect = buttonElement.getBoundingClientRect();
+        menu.style.position = 'absolute';
+        menu.style.top = `${rect.bottom + window.scrollY}px`;
+        menu.style.left = `${rect.left + window.scrollX}px`;
+        menu.style.zIndex = '1000'; // Ensure it's on top
+
+        document.body.appendChild(menu);
+
+        // Click outside to close
+        const clickOutsideHandler = (event) => {
+            if (!menu.contains(event.target) && event.target !== buttonElement) {
+                menu.remove();
+                document.removeEventListener('click', clickOutsideHandler, true); // Clean up listener
+            }
+        };
+        // Use capture phase to catch clicks early
+        document.addEventListener('click', clickOutsideHandler, true);
+    }
+
+    // Modified handler to show options
+    function handleExportProject(projectId, event) {
+        const buttonElement = event.currentTarget; // Get the button that was clicked
+        displayExportOptions(projectId, buttonElement);
     }
 
     function handleAddCard(columnIndex, parentId = null, initialContent = '', insertBeforeCardId = null) {

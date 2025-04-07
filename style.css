@@ -575,3 +575,31 @@ body.ai-ready .ai-feature {
 .modal-actions button:hover {
     background-color: #f0f0f0;
 }
+
+/* --- Export Options Menu --- */
+.export-options-menu {
+    position: absolute; /* Positioned by JS */
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.15);
+    z-index: 1001; /* Ensure it's above other elements */
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+}
+
+.export-options-menu button {
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.9em;
+    border-radius: 3px; /* Slight rounding */
+    margin: 0; /* Reset margin */
+}
+
+.export-options-menu button:hover {
+    background-color: #f0f0f0;
+}
