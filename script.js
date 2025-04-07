@@ -265,12 +265,97 @@ document.addEventListener('DOMContentLoaded', () => {
             scrollHierarchy(cardId);
             highlightHierarchy(cardId);
         });
-        console.log(`Focused card ${cardId}, position: ${position}`);
-    }
+         console.log(`Focused card ${cardId}, position: ${position}`);
+     }
 
-    // --- Action Locking Helpers ---
+     /**
+      * Creates and displays a modal dialog.
+      * @param {string} title - The title of the modal.
+      * @param {string} contentHtml - HTML string for the modal's body content. Must include elements with unique IDs if they need to be accessed.
+      * @param {string} submitButtonText - Text for the primary action button.
+      * @param {(modalElement: HTMLElement) => void} onSubmit - Callback function executed when the submit button is clicked. Receives the modal element.
+      * @param {() => void} [onCancel] - Optional callback function executed on cancellation (Cancel button, Escape key, overlay click).
+      */
+     function createModal(title, contentHtml, submitButtonText, onSubmit, onCancel) {
+         // Remove any existing modal first
+         document.querySelector('.modal-overlay')?.remove();
 
-    function disableConflictingActions() {
+         const overlay = document.createElement('div');
+         overlay.className = 'modal-overlay';
+
+         const modal = document.createElement('div');
+         modal.className = 'modal-content';
+         modal.innerHTML = `
+             <h4>${title}</h4>
+             ${contentHtml}
+             <div class="modal-actions">
+                 <button class="modal-cancel-btn">Cancel</button>
+                 <button class="modal-submit-btn primary">${submitButtonText}</button>
+             </div>
+         `;
+         overlay.appendChild(modal);
+         document.body.appendChild(overlay);
+
+         const cancelButton = modal.querySelector('.modal-cancel-btn');
+         const submitButton = modal.querySelector('.modal-submit-btn');
+
+         const closeModal = () => {
+             if (overlay.parentNode === document.body) {
+                 document.body.removeChild(overlay);
+             }
+             // Clean up keydown listener
+             document.removeEventListener('keydown', handleKeyDown);
+         };
+
+         const handleKeyDown = (e) => {
+             if (e.key === 'Escape') {
+                 e.preventDefault();
+                 if (onCancel) onCancel();
+                 closeModal();
+             } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                 // Allow Ctrl/Cmd+Enter submit primarily for textareas
+                 if (e.target.tagName === 'TEXTAREA') {
+                     e.preventDefault();
+                     submitButton.click();
+                 }
+             }
+         };
+
+         cancelButton.addEventListener('click', () => {
+             if (onCancel) onCancel();
+             closeModal();
+         });
+
+         submitButton.addEventListener('click', () => {
+             onSubmit(modal); // Pass the modal element to the submit handler
+             closeModal();
+         });
+
+         // Close on overlay click
+         overlay.addEventListener('click', (e) => {
+             if (e.target === overlay) {
+                 if (onCancel) onCancel();
+                 closeModal();
+             }
+         });
+
+         // Add keydown listener for Escape and potentially Ctrl+Enter
+         document.addEventListener('keydown', handleKeyDown);
+
+         // Auto-focus the first input or textarea within the modal content
+         const firstInput = modal.querySelector('input, textarea');
+         if (firstInput) {
+             firstInput.focus();
+             if (typeof firstInput.select === 'function') {
+                 firstInput.select(); // Select text if possible (useful for inputs)
+             }
+         }
+     }
+
+
+     // --- Action Locking Helpers ---
+
+     function disableConflictingActions() {
         console.log("Disabling conflicting actions...");
         isAiActionInProgress = true;
         document.body.classList.add('ai-busy'); // Add class for potential global styling/cursor changes
@@ -1232,79 +1317,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const projectTitle = data.projects[data.activeProjectId]?.title;
         // Confirmation uses data layer checks via deleteColumnData
-        if (!confirm(`Delete this empty column from project "${projectTitle}"?`)) return;
+         if (!confirm(`Delete this empty column from project "${projectTitle}"?`)) return;
 
-        if (data.deleteColumnData(columnIndex)) { // Use data function (checks conditions)
-            const columnEl = getColumnElementByIndex(columnIndex);
-            if (columnEl) {
-                columnsContainer.removeChild(columnEl);
-            } else {
-                 console.warn("Column element not found for deletion, re-rendering.");
-                 renderApp(); // Failsafe
-            }
-            updateAllToolbarButtons();
-            data.saveProjectsData(); // Save deletion
-            console.log(`Column ${columnIndex} deleted.`);
-        } else {
-             alert("Cannot delete this column. It might not be the rightmost, the minimum number of columns hasn't been exceeded, or it's not empty.");
-        }
-    }
+         if (data.deleteColumnData(columnIndex)) { // Use data function (checks conditions)
+             const columnEl = getColumnElementByIndex(columnIndex);
+             if (columnEl) {
+                 columnsContainer.removeChild(columnEl);
+             } else {
+                  console.warn("Column element not found for deletion, re-rendering.");
+                  renderApp(); // Failsafe
+             }
+             updateAllToolbarButtons();
+             data.saveProjectsData(); // Save deletion
+             console.log(`Column ${columnIndex} deleted.`);
+         } else {
+              alert("Cannot delete this column. It might not be the rightmost, the minimum number of columns hasn't been exceeded, or it's not empty.");
+         }
+     }
 
-    function handleSetColumnPrompt(columnIndex) {
-        const columnData = data.getColumnData(columnIndex);
-        if (!columnData) return;
-        const currentPrompt = columnData.prompt || '';
+     function handleSetColumnPrompt(columnIndex) {
+         const columnData = data.getColumnData(columnIndex);
+         if (!columnData) return;
+         const currentPrompt = columnData.prompt || '';
 
-        // --- Modal Implementation (UI Logic) ---
-        const overlay = document.createElement('div');
-        overlay.className = 'modal-overlay';
-        const modal = document.createElement('div');
-        modal.className = 'modal-content';
-        modal.innerHTML = `
-            <h4>Set Prompt for Column ${columnIndex + 1}</h4>
-            <p>This prompt guides AI 'Continue' actions within this column.</p>
-            <textarea id="column-prompt-input" placeholder="e.g., Write in the style of a pirate.">${currentPrompt}</textarea>
-            <div class="modal-actions">
-                <button id="column-prompt-cancel">Cancel</button>
-                <button id="column-prompt-submit" class="primary">Save Prompt</button>
-            </div>
-        `;
-        overlay.appendChild(modal);
-        document.body.appendChild(overlay);
+         // Use the createModal helper
+         const modalTitle = `Set Prompt for Column ${columnIndex + 1}`;
+         const modalContent = `
+             <p>This prompt guides AI 'Continue' actions within this column.</p>
+             <textarea id="modal-column-prompt-input" placeholder="e.g., Write in the style of a pirate.">${currentPrompt}</textarea>
+         `; // Use a unique ID for the textarea
 
-        const promptInput = modal.querySelector('#column-prompt-input');
-        const cancelButton = modal.querySelector('#column-prompt-cancel');
-        const submitButton = modal.querySelector('#column-prompt-submit');
-        promptInput.focus();
-        promptInput.select();
+         createModal(modalTitle, modalContent, "Save Prompt",
+             (modalElement) => { // onSubmit callback
+                 const promptInput = modalElement.querySelector('#modal-column-prompt-input');
+                 const newPrompt = promptInput.value.trim();
+                 // Use data function to update
+                 if (data.setColumnPromptData(columnIndex, newPrompt)) {
+                     data.saveProjectsData(); // Save if changed
+                     // Update button indicator
+                     const columnEl = getColumnElementByIndex(columnIndex);
+                     if (columnEl) updateToolbarButtons(columnEl, columnIndex);
+                     console.log(`Column ${columnIndex} prompt updated.`);
+                 }
+             }
+             // No specific onCancel action needed beyond closing the modal
+         );
+     }
 
-        const closeModal = () => {
-            if (overlay.parentNode === document.body) {
-                document.body.removeChild(overlay);
-            }
-        };
-
-        cancelButton.addEventListener('click', closeModal);
-        submitButton.addEventListener('click', () => {
-            const newPrompt = promptInput.value.trim();
-            // Use data function to update
-            if (data.setColumnPromptData(columnIndex, newPrompt)) {
-                data.saveProjectsData(); // Save if changed
-                // Update button indicator
-                const columnEl = getColumnElementByIndex(columnIndex);
-                if (columnEl) updateToolbarButtons(columnEl, columnIndex);
-                console.log(`Column ${columnIndex} prompt updated.`);
-            }
-            closeModal();
-        });
-        promptInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitButton.click(); }
-            else if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
-        });
-         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-    }
-
-    // --- Textarea and Focus Handlers ---
+     // --- Textarea and Focus Handlers ---
 
     function handleTextareaBlur(event) {
         const textarea = event.target;
@@ -1675,64 +1735,50 @@ document.addEventListener('DOMContentLoaded', () => {
              insertBeforeId: null, // Append new card to the end of the group
              requiresContentCheck: true,
              useMultiPartResponseHandler: false // Expand typically produces single output
-         });
-     }
+          });
+      }
 
-     function handleAiCustom(cardId) {
-         const card = data.getCard(cardId);
-         if (!card) return;
-         if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
-         if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
+      function handleAiCustom(cardId) {
+          const card = data.getCard(cardId);
+          if (!card) return;
+          if (!aiService.areAiSettingsValid()) { alert("Please configure AI settings first."); return; }
+          if (isAiActionInProgress) { alert("Please wait for the current AI action to complete."); return; }
 
-         // --- Modal Implementation (UI Logic - Kept separate from executeAiAction) ---
-         const overlay = document.createElement('div');
-         overlay.className = 'modal-overlay';
-         const modal = document.createElement('div');
-         modal.className = 'modal-content';
-         modal.innerHTML = `
-             <h4>Custom AI Prompt</h4>
-             <p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
-             <textarea id="custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>
-             <div class="modal-actions">
-                 <button id="custom-prompt-cancel">Cancel</button>
-                 <button id="custom-prompt-submit" class="primary">Submit</button>
-             </div>
-         `;
-         overlay.appendChild(modal);
-         document.body.appendChild(overlay);
+          // Use the createModal helper
+          const modalTitle = "Custom AI Prompt";
+          const modalContent = `
+              <p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
+              <textarea id="modal-custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>
+          `; // Use a unique ID
 
-         const promptInput = modal.querySelector('#custom-prompt-input');
-         const cancelButton = modal.querySelector('#custom-prompt-cancel');
-         const submitButton = modal.querySelector('#custom-prompt-submit');
-         promptInput.focus();
+          createModal(modalTitle, modalContent, "Submit",
+              (modalElement) => { // onSubmit callback
+                  const promptInput = modalElement.querySelector('#modal-custom-prompt-input');
+                  const userPrompt = promptInput.value.trim();
+                  if (!userPrompt) {
+                      alert("Please enter a prompt.");
+                      // Re-open modal or handle differently? For now, just alert and close.
+                      // To prevent closing, the onSubmit callback in createModal would need modification
+                      // or this callback would need to signal not to close.
+                      // Simpler approach for now: alert and let it close.
+                      return;
+                  }
 
-         const closeModal = () => { if (overlay.parentNode === document.body) document.body.removeChild(overlay); };
+                  // --- Call executeAiAction after getting prompt ---
+                  executeAiAction(cardId, 'generateCustom', {
+                      targetColumnIndex: card.columnIndex + 1, // Custom prompt usually goes to next column
+                      parentIdForNewCards: card.id, // Original card is parent
+                      insertBeforeId: null, // Append to end of group
+                      requiresContentCheck: false, // Allow custom prompt on empty card
+                      userPrompt: userPrompt, // Pass the collected prompt
+                      useMultiPartResponseHandler: true // Custom prompts might produce multiple parts
+                  });
+              }
+              // No specific onCancel action needed
+          );
+      }
 
-         cancelButton.addEventListener('click', closeModal);
-         submitButton.addEventListener('click', () => {
-             const userPrompt = promptInput.value.trim();
-             if (!userPrompt) { alert("Please enter a prompt."); return; }
-             closeModal();
-
-             // --- Call executeAiAction after getting prompt ---
-             executeAiAction(cardId, 'generateCustom', {
-                 targetColumnIndex: card.columnIndex + 1, // Custom prompt usually goes to next column
-                 parentIdForNewCards: card.id, // Original card is parent
-                 insertBeforeId: null, // Append to end of group
-                 requiresContentCheck: false, // Allow custom prompt on empty card
-                 userPrompt: userPrompt, // Pass the collected prompt
-                 useMultiPartResponseHandler: true // Custom prompts might produce multiple parts
-             });
-         });
-
-         promptInput.addEventListener('keydown', (e) => {
-             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitButton.click(); }
-             else if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
-         });
-         overlay.addEventListener('click', (e) => { if (e.target === overlay) closeModal(); });
-     }
-
-     // --- AI Feature Visibility ---
+      // --- AI Feature Visibility ---
     function updateAiFeatureVisibility(isValid) {
         document.body.classList.toggle('ai-ready', isValid);
         document.querySelectorAll('.ai-feature button').forEach(btn => {
