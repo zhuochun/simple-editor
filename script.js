@@ -73,64 +73,92 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     function scrollHierarchy(cardId) {
         const cardEl = getCardElement(cardId);
-        if (!cardEl) return;
+        if (!cardEl) return; // Exit if the target card element doesn't exist
 
-        const scrolledContainers = new Set(); // Track containers already scrolled
+        // Keep track of containers we've already scrolled to prevent redundant animations
+        const scrolledContainers = new Set();
 
+        /**
+         * Helper function to scroll a container to bring a target element into view.
+         * @param {HTMLElement} container - The scrollable container element.
+         * @param {HTMLElement} targetElement - The element to scroll to within the container.
+         * @param {boolean} [center=true] - Whether to center the element vertically.
+         * @param {boolean} [scrollToTopIfTaller=false] - If the element is taller than the viewport, scroll to its top instead of centering.
+         */
         const scrollToTarget = (container, targetElement, center = true, scrollToTopIfTaller = false) => {
+            // Basic validation and check if already scrolled
             if (!container || !targetElement || scrolledContainers.has(container)) {
                 return;
             }
 
+            // Get dimensions and positions relative to the viewport
             const containerRect = container.getBoundingClientRect();
             const elementRect = targetElement.getBoundingClientRect();
+
+            // Calculate the element's top position relative to the container's scrollable content
             const relativeElementTop = elementRect.top - containerRect.top + container.scrollTop;
             const relativeElementHeight = elementRect.height;
-            const containerHeight = container.clientHeight;
+            const containerHeight = container.clientHeight; // Visible height of the container
 
-            let targetScroll;
+            let targetScroll; // The desired scrollTop value for the container
+
+            // Determine the target scroll position based on options
             if (scrollToTopIfTaller && relativeElementHeight > window.innerHeight) {
+                // If the element is taller than the viewport, just scroll to its top
                 targetScroll = relativeElementTop;
             } else if (center) {
+                // Calculate scroll position to center the element vertically
                 targetScroll = relativeElementTop - (containerHeight / 2) + (relativeElementHeight / 2);
             } else {
+                // Default: scroll to bring the element's top into view (if not centering)
                 targetScroll = relativeElementTop;
             }
 
+            // Perform the scroll animation, ensuring scroll position isn't negative
             container.scrollTo({
-                top: Math.max(0, targetScroll),
-                behavior: 'smooth'
+                top: Math.max(0, targetScroll), // Prevent scrolling above the top
+                behavior: 'smooth' // Use smooth scrolling animation
             });
+            // Mark this container as scrolled
             scrolledContainers.add(container);
         };
 
-        // 1. Scroll Focused Card
-        const focusedScrollContainer = cardEl.closest('.column')?.querySelector('.cards-container');
-        scrollToTarget(focusedScrollContainer, cardEl, true);
+        // --- Scrolling Logic ---
 
-        // 2. Scroll Ancestors (using data helper)
-        const ancestorIds = data.getAncestorIds(cardId);
+        // 1. Scroll the column containing the initially focused card to center that card.
+        const focusedScrollContainer = cardEl.closest('.column')?.querySelector('.cards-container');
+        scrollToTarget(focusedScrollContainer, cardEl, true); // Center the primary target card
+
+        // 2. Scroll the columns containing ancestor cards to center each ancestor.
+        // This brings the lineage leading to the focused card into view.
+        const ancestorIds = data.getAncestorIds(cardId); // Get IDs from data layer
         ancestorIds.forEach(ancestorId => {
-            const ancestorEl = getCardElement(ancestorId);
+            const ancestorEl = getCardElement(ancestorId); // Find the ancestor's DOM element
             if (ancestorEl) {
                 const ancestorScrollContainer = ancestorEl.closest('.column')?.querySelector('.cards-container');
-                scrollToTarget(ancestorScrollContainer, ancestorEl, true);
+                scrollToTarget(ancestorScrollContainer, ancestorEl, true); // Center each ancestor
             }
         });
 
-        // 3. Scroll Descendant Groups (using data helpers)
-        const descendantIds = data.getDescendantIds(cardId);
+        // 3. Scroll the columns containing descendant groups to bring those groups into view.
+        // This ensures the start of the focused card's sub-tree is visible.
+        const descendantIds = data.getDescendantIds(cardId); // Get all descendant IDs
+        // Include the focused card itself, as it might be a parent with children in the next column
         const allIdsToCheckForGroups = [cardId, ...descendantIds];
 
         allIdsToCheckForGroups.forEach(currentId => {
-            const currentCardData = data.getCard(currentId);
-            if (!currentCardData) return;
+            const currentCardData = data.getCard(currentId); // Get card data
+            if (!currentCardData) return; // Skip if card data is missing
 
+            // Check if this card *has* children in the *next* column
             const childrenInNextCol = data.getChildCards(currentId, currentCardData.columnIndex + 1);
             if (childrenInNextCol.length > 0) {
-                const groupEl = getGroupElement(currentId);
+                // If it has children, find the corresponding group header element in the next column
+                const groupEl = getGroupElement(currentId); // Group ID matches parent card ID
                 if (groupEl) {
+                    // Find the scroll container for that group
                     const groupScrollContainer = groupEl.closest('.column')?.querySelector('.cards-container');
+                    // Scroll the group into view. Center it, but scroll to top if the group itself is very tall.
                     scrollToTarget(groupScrollContainer, groupEl, true, true);
                 }
             }
@@ -444,76 +472,107 @@ document.addEventListener('DOMContentLoaded', () => {
         return columnEl;
     }
 
+    /**
+     * Renders the content (cards or groups) within a specific column element.
+     * Clears existing content and rebuilds based on the current project data.
+     * @param {HTMLElement} columnEl - The DOM element of the column to render into.
+     * @param {number} columnIndex - The index of the column being rendered.
+     */
     function renderColumnContent(columnEl, columnIndex) {
         const cardsContainer = columnEl.querySelector('.cards-container');
-        cardsContainer.innerHTML = ''; // Clear previous content
+        if (!cardsContainer) {
+            console.error(`Cards container not found in column element for index ${columnIndex}`);
+            return;
+        }
+        cardsContainer.innerHTML = ''; // Clear previous content before rendering new content
 
         if (columnIndex === 0) {
-            // --- Render Root Cards for Column 0 ---
+            // --- Render Root Cards (Column 0) ---
+            // Column 0 only contains root cards (cards with no parentId).
             const rootCards = data.getColumnCards(0).filter(c => !c.parentId);
-            // Root cards are already sorted by order by getColumnCards
+            // Cards are assumed to be sorted by 'order' by the data.getColumnCards function.
             rootCards.forEach(cardData => {
-                const cardEl = createCardElement(cardData);
-                cardsContainer.appendChild(cardEl);
+                const cardEl = createCardElement(cardData); // Create the card DOM element
+                cardsContainer.appendChild(cardEl); // Add it to the container
             });
         } else {
-            // --- Render Groups and Child Cards for Columns > 0 ---
-            // Get parents from the *previous* column, sorted by their order
-            const parentCards = data.getColumnCards(columnIndex - 1);
+            // --- Render Groups and Child Cards (Columns > 0) ---
+            // Columns after the first display cards grouped by their parent from the *previous* column.
+            // Get all cards from the previous column; these are the potential parents for groups in this column.
+            const parentCards = data.getColumnCards(columnIndex - 1); // Sorted by order
 
             parentCards.forEach(parentCardData => {
-                // Create a group element for each parent from the previous column
+                // Create a group header element for *each* potential parent card from the previous column.
+                // This ensures a group container exists even if it currently has no children in this column.
                 const groupEl = createGroupElement(parentCardData.id);
                 if (!groupEl) {
+                    // This might happen if the parent card data is inconsistent or removed unexpectedly.
                     console.warn(`Failed to create group element for parent ${parentCardData.id} in column ${columnIndex}`);
-                    return; // Skip this parent if group creation fails
+                    return; // Skip rendering this group if creation failed
                 }
 
-                // Get children of this parent *in the current column*, sorted by their order
-                const childCards = data.getChildCards(parentCardData.id, columnIndex);
+                // Get the children of this specific parent *that belong in the current column*.
+                const childCards = data.getChildCards(parentCardData.id, columnIndex); // Sorted by order
 
-                // If children exist, create their card elements and append to the group
+                // If this parent has children in the current column, create and append their card elements.
                 if (childCards.length > 0) {
                     childCards.forEach(childCardData => {
-                        const cardEl = createCardElement(childCardData);
-                        groupEl.appendChild(cardEl);
+                        const cardEl = createCardElement(childCardData); // Create child card element
+                        groupEl.appendChild(cardEl); // Append card *inside* the group element
                     });
                 }
-                // Else: The group will be empty, which is the desired behavior to show all parent groups
+                // If childCards.length is 0, the group element remains empty, acting as a visual container.
 
-                // Append the complete group (with or without children) to the container
+                // Append the complete group element (header + any child cards) to the column's container.
                 cardsContainer.appendChild(groupEl);
             });
         }
 
+        // After rendering content, update the state of toolbar buttons for this specific column.
         updateToolbarButtons(columnEl, columnIndex);
     }
 
-
+    /**
+     * Renders the entire application structure (all columns and their content).
+     * Clears the main columns container and rebuilds it based on the active project's data.
+     */
     function renderApp() {
+        // Clear the main container holding all columns.
         columnsContainer.innerHTML = '';
-        const projectData = data.getActiveProjectData(); // Use data helper
+        const projectData = data.getActiveProjectData(); // Get data for the currently active project
 
+        // Handle cases where no project is active or data is missing/corrupted.
         if (!projectData) {
             columnsContainer.innerHTML = '<p style="padding: 20px; text-align: center;">Error: No project selected or data corrupted.</p>';
+            console.error("renderApp called with no active project data.");
             return;
         }
 
-        // Determine the number of columns to render based on data
+        // Determine how many columns need to be rendered in the DOM.
+        // This is the maximum of the minimum required columns (data.MIN_COLUMNS)
+        // and the actual number of columns defined in the project data.
         const columnsToRenderCount = Math.max(data.MIN_COLUMNS, projectData.columns.length);
 
+        // Loop through the required number of columns.
         for (let i = 0; i < columnsToRenderCount; i++) {
+             // Create the basic structure (toolbar, container) for each column.
              const columnEl = createColumnElement(i);
-             columnsContainer.appendChild(columnEl);
-             // Ensure column data exists before rendering content
+             columnsContainer.appendChild(columnEl); // Add the column structure to the main container.
+
+             // Check if data actually exists for this column index in the project data.
              if (i < projectData.columns.length) {
+                 // If data exists, render the cards/groups within this column.
                  renderColumnContent(columnEl, i);
              } else {
-                 // Render empty column structure if data doesn't exist yet (shouldn't happen often with addColumnData check)
+                 // If rendering a column beyond what's in the data (due to MIN_COLUMNS),
+                 // it will be an empty column structure. Just update its toolbar buttons.
+                 // This scenario should be less common if addColumnData ensures data exists.
                  updateToolbarButtons(columnEl, i);
              }
         }
 
+        // After all columns are created and potentially rendered, update all toolbar buttons
+        // across all columns to ensure correct states (e.g., enable/disable delete/add column).
         updateAllToolbarButtons();
         console.log(`App rendered for project: ${data.projects[data.activeProjectId]?.title}`);
     }
@@ -1512,71 +1571,88 @@ document.addEventListener('DOMContentLoaded', () => {
                 tempTextarea.classList.remove('ai-loading');
                 data.updateCardContentData(tempCardId, tempTextarea.value); // Save error
                 data.saveProjectsData();
-                enableConflictingActions(); // Unlock UI on error
-            },
-            onDone: (fullResponse) => {
-                const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
-                let lastCardId = null;
+                 enableConflictingActions(); // Unlock UI on error
+             },
+             onDone: (fullResponse) => {
+                 // --- AI Response Processing for Breakdown ---
+                 // Split the AI response into potential multiple cards based on the separator.
+                 const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
+                 let lastCardId = null; // Keep track of the last card created/updated
 
-                if (parts.length > 0) {
-                    // Reuse the temporary card for the first part
-                    const firstPartContent = parts[0];
-                    if (data.updateCardContentData(tempCardId, firstPartContent)) { // Update data
-                        if (tempTextarea) { // Update UI
-                            tempTextarea.value = firstPartContent;
-                            tempTextarea.classList.remove('ai-loading');
-                            autoResizeTextarea({ target: tempTextarea });
-                        }
-                        lastCardId = tempCardId;
-                        console.log(`AI Breakdown: Reused temp card ${tempCardId}.`);
-                    } else {
-                        // If update failed (e.g., card deleted concurrently), log error
-                        console.error("Could not update temp card data for AI Breakdown.");
-                        handleDeleteCard(tempCardId); // Attempt to clean up temp card
-                    }
+                 if (parts.length > 0) {
+                     // --- Part 1: Reuse Placeholder Card ---
+                     // Use the initially created temporary placeholder card for the first part of the response.
+                     const firstPartContent = parts[0];
+                     // Update the data model for the placeholder card.
+                     if (data.updateCardContentData(tempCardId, firstPartContent)) {
+                         // If data update was successful, update the UI as well.
+                         if (tempTextarea) {
+                             tempTextarea.value = firstPartContent;
+                             tempTextarea.classList.remove('ai-loading');
+                             autoResizeTextarea({ target: tempTextarea });
+                         }
+                         lastCardId = tempCardId; // Mark this as the last processed card
+                         console.log(`AI Breakdown: Reused temp card ${tempCardId} for first part.`);
+                     } else {
+                         // Handle edge case where the temp card might have been deleted between creation and now.
+                         console.error("Could not update temp card data for AI Breakdown (maybe deleted?).");
+                         handleDeleteCard(tempCardId); // Attempt to clean up the temp card if it still exists
+                     }
 
-                    // Create new cards for the remaining parts
-                    if (parts.length > 1 && lastCardId) { // Ensure first card was processed
-                        let insertAfterCardId = lastCardId;
-                        parts.slice(1).forEach((partContent) => {
-                            // Determine insertBeforeId based on current siblings in data
-                            let insertBeforeId = null;
-                            const insertAfterCard = data.getCard(insertAfterCardId);
-                            if (insertAfterCard) {
-                                const siblings = data.getSiblingCards(insertAfterCardId);
-                                const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
-                                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                                    insertBeforeId = siblings[currentIndex + 1].id;
-                                }
-                            }
-                            // Use handleAddCard to create card and update DOM/Data
-                            const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
-                            if (newChildId) {
-                                lastCardId = newChildId;
-                                insertAfterCardId = newChildId;
-                            }
-                        });
-                    }
-                } else {
-                    // No valid parts, delete the temporary card
-                    console.log("AI Breakdown: No valid parts returned, deleting temp card.");
-                    handleDeleteCard(tempCardId); // Use handler to delete
-                }
+                     // --- Parts 2+: Create New Cards ---
+                     // If there are more parts in the response, create new cards for them.
+                     if (parts.length > 1 && lastCardId) { // Ensure the first part was successfully processed
+                         let insertAfterCardId = lastCardId; // Start inserting after the first (reused) card
+                         parts.slice(1).forEach((partContent) => {
+                             // Determine the correct insertion point (insertBeforeId) for the new card
+                             // to maintain order relative to siblings created in this batch.
+                             let insertBeforeId = null;
+                             const insertAfterCard = data.getCard(insertAfterCardId);
+                             if (insertAfterCard) {
+                                 const siblings = data.getSiblingCards(insertAfterCardId);
+                                 const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
+                                 // Find the ID of the card immediately following the 'insertAfterCardId'
+                                 if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                                     insertBeforeId = siblings[currentIndex + 1].id;
+                                 }
+                             }
+                             // Use handleAddCard to create the new card, add it to data, and render it in the DOM.
+                             // It will be placed before 'insertBeforeId' if found, otherwise appended.
+                             const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
+                             if (newChildId) {
+                                 // Update tracking for the next iteration
+                                 lastCardId = newChildId;
+                                 insertAfterCardId = newChildId;
+                             }
+                         });
+                     }
+                 } else {
+                     // --- No Valid Parts ---
+                     // If the AI response was empty or only contained separators, delete the placeholder card.
+                     console.log("AI Breakdown: No valid parts returned, deleting temp card.");
+                     handleDeleteCard(tempCardId); // Use the standard delete handler
+                 }
 
-                // Final save after all potential modifications
-                data.saveProjectsData();
-                // Update the group header for the original card
-                updateGroupHeaderDisplay(tempCardId);
-                console.log(`AI Breakdown completed for card ${cardId}.`);
+                 // --- Final Steps ---
+                 data.saveProjectsData(); // Save all changes made during response processing.
+                 // Update the group header display for the *original* parent card, as its children changed.
+                 updateGroupHeaderDisplay(cardId); // Use original card ID here
+                 console.log(`AI Breakdown completed for original card ${cardId}. Last created/updated card: ${lastCardId}`);
 
-                if (tempCardId && data.getCard(tempCardId)) {
-                    requestAnimationFrame(() => {
-                        focusCardTextarea(tempCardId, 'start'); // Use dedicated function, focus at start
-                    })
-                }
-                enableConflictingActions(); // Unlock UI on success
-            }
-        });
+                 // Focus the first card that was created or updated, if it still exists.
+                 if (lastCardId && data.getCard(lastCardId)) { // Check if lastCardId is set and card exists
+                     requestAnimationFrame(() => {
+                         focusCardTextarea(lastCardId, 'start'); // Focus the first part
+                     });
+                 } else if (tempCardId && data.getCard(tempCardId) && parts.length === 1) {
+                     // Fallback to focusing the reused temp card if it was the only one and still exists
+                      requestAnimationFrame(() => {
+                         focusCardTextarea(tempCardId, 'start');
+                     });
+                 }
+                 enableConflictingActions(); // Re-enable UI interactions.
+             }
+         });
     }
 
     function handleAiExpand(cardId) {
@@ -1713,67 +1789,85 @@ document.addEventListener('DOMContentLoaded', () => {
                     placeholderTextarea.classList.remove('ai-loading');
                     data.updateCardContentData(placeholderCardId, placeholderTextarea.value); // Save error
                     data.saveProjectsData();
-                    enableConflictingActions(); // Unlock UI on error
-                },
-                onDone: (finalContent) => {
-                    // Process potential multi-part response
-                    const parts = finalContent.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
-                    let lastCardId = null;
+                 enableConflictingActions(); // Unlock UI on error
+                 },
+                 onDone: (finalContent) => {
+                     // --- AI Response Processing for Custom Prompt ---
+                     // Similar to Breakdown, split the response by the separator for potential multi-card output.
+                     const parts = finalContent.split(AI_RESPONSE_SEPARATOR).map(p => p.trim()).filter(p => p.length > 0);
+                     let lastCardId = null; // Track the last card created/updated
 
-                    if (parts.length > 0) {
-                        // Reuse placeholder for first part
-                        const firstPartContent = parts[0];
-                        if (data.updateCardContentData(placeholderCardId, firstPartContent)) {
-                            if (placeholderTextarea) {
-                                placeholderTextarea.value = firstPartContent;
-                                placeholderTextarea.classList.remove('ai-loading');
-                                autoResizeTextarea({ target: placeholderTextarea });
-                            }
-                            lastCardId = placeholderCardId;
-                            console.log(`AI Custom: Reused placeholder ${placeholderCardId}.`);
-                        } else {
-                             console.error("Could not update placeholder card data for AI Custom.");
-                             handleDeleteCard(placeholderCardId); // Cleanup
-                        }
+                     if (parts.length > 0) {
+                         // --- Part 1: Reuse Placeholder Card ---
+                         // Use the placeholder card created before the AI call for the first part.
+                         const firstPartContent = parts[0];
+                         // Update the placeholder card's data.
+                         if (data.updateCardContentData(placeholderCardId, firstPartContent)) {
+                             // Update the UI if data update was successful.
+                             if (placeholderTextarea) {
+                                 placeholderTextarea.value = firstPartContent;
+                                 placeholderTextarea.classList.remove('ai-loading');
+                                 autoResizeTextarea({ target: placeholderTextarea });
+                             }
+                             lastCardId = placeholderCardId; // Mark as the last processed card
+                             console.log(`AI Custom: Reused placeholder ${placeholderCardId} for first part.`);
+                         } else {
+                              // Handle edge case: placeholder might have been deleted.
+                              console.error("Could not update placeholder card data for AI Custom (maybe deleted?).");
+                              handleDeleteCard(placeholderCardId); // Attempt cleanup
+                         }
 
-                        // Create new cards for remaining parts
-                        if (parts.length > 1 && lastCardId) {
-                            let insertAfterCardId = lastCardId;
-                            parts.slice(1).forEach((partContent) => {
-                                let insertBeforeId = null;
-                                const insertAfterCard = data.getCard(insertAfterCardId);
-                                if (insertAfterCard) {
-                                    const siblings = data.getSiblingCards(insertAfterCardId);
-                                    const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
-                                    if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                                        insertBeforeId = siblings[currentIndex + 1].id;
-                                    }
-                                }
-                                const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCard, partContent, insertBeforeId);
-                                if (newChildId) {
-                                    lastCardId = newChildId;
-                                    insertAfterCardId = newChildId;
-                                }
-                            });
-                        }
-                    } else {
-                        console.log("AI Custom: No valid parts returned, deleting placeholder.");
-                        handleDeleteCard(placeholderCardId);
-                    }
+                         // --- Parts 2+: Create New Cards ---
+                         // If more parts exist, create new cards for them.
+                         if (parts.length > 1 && lastCardId) { // Ensure first part was processed
+                             let insertAfterCardId = lastCardId; // Start inserting after the first card
+                             parts.slice(1).forEach((partContent) => {
+                                 // Determine the correct insertion point relative to siblings.
+                                 let insertBeforeId = null;
+                                 const insertAfterCard = data.getCard(insertAfterCardId);
+                                 if (insertAfterCard) {
+                                     const siblings = data.getSiblingCards(insertAfterCardId);
+                                     const currentIndex = siblings.findIndex(c => c.id === insertAfterCardId);
+                                     if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                                         insertBeforeId = siblings[currentIndex + 1].id;
+                                     }
+                                 }
+                                 // Create the new card using handleAddCard (updates data and DOM).
+                                 const newChildId = handleAddCard(targetColumnIndex, parentIdForNewCard, partContent, insertBeforeId);
+                                 if (newChildId) {
+                                     // Update tracking for the next iteration
+                                     lastCardId = newChildId;
+                                     insertAfterCardId = newChildId;
+                                 }
+                             });
+                         }
+                     } else {
+                         // --- No Valid Parts ---
+                         // If the response was empty or only separators, delete the placeholder.
+                         console.log("AI Custom: No valid parts returned, deleting placeholder.");
+                         handleDeleteCard(placeholderCardId);
+                     }
 
-                    data.saveProjectsData(); // Final save
-                    // Update the group header for the original card
-                    updateGroupHeaderDisplay(placeholderCardId);
-                    console.log(`AI Custom completed for original card ${cardId}.`);
+                     // --- Final Steps ---
+                     data.saveProjectsData(); // Save all changes.
+                     // Update the group header display for the *original* parent card.
+                     updateGroupHeaderDisplay(cardId); // Use original card ID
+                     console.log(`AI Custom completed for original card ${cardId}. Last created/updated card: ${lastCardId}`);
 
-                    if (placeholderCardId && data.getCard(placeholderCardId)) {
-                        requestAnimationFrame(() => {
-                            focusCardTextarea(placeholderCardId, 'start'); // Use dedicated function, focus at start
-                        });
-                    }
-                    enableConflictingActions(); // Unlock UI on success
-                }
-            });
+                     // Focus the first card created/updated, if it exists.
+                     if (lastCardId && data.getCard(lastCardId)) { // Check if lastCardId is set and card exists
+                         requestAnimationFrame(() => {
+                             focusCardTextarea(lastCardId, 'start');
+                         });
+                      } else if (placeholderCardId && data.getCard(placeholderCardId) && parts.length === 1) {
+                         // Fallback to focusing the reused placeholder if it was the only one and still exists
+                         requestAnimationFrame(() => {
+                             focusCardTextarea(placeholderCardId, 'start');
+                         });
+                     }
+                     enableConflictingActions(); // Re-enable UI interactions.
+                 }
+             });
         });
 
         promptInput.addEventListener('keydown', (e) => {
