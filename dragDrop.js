@@ -12,6 +12,13 @@ const CSS_CLASSES = {
 let draggedCardId = null;
 let draggedElement = null; // Store the element being dragged
 let dragIndicator = null;
+let scrollIntervalId = null; // To store the interval ID for scrolling
+let currentScrollContainer = null; // Track the container being scrolled
+let scrollAnimationFrameId = null; // Track the requestAnimationFrame ID
+
+// --- Constants ---
+const SCROLL_SPEED = 10; // Pixels per frame
+const SCROLL_TRIGGER_ZONE_HEIGHT = 50; // Pixels from top/bottom edge to trigger scroll
 
 // --- DOM Helpers (to be passed in) ---
 let getCardElement = (id) => null;
@@ -50,6 +57,47 @@ function clearDragStyles(removeIndicatorInstance = true) {
         }
     }
 }
+
+// --- Auto-Scroll Helpers ---
+
+function stopScrolling() {
+    if (scrollAnimationFrameId) {
+        cancelAnimationFrame(scrollAnimationFrameId);
+        scrollAnimationFrameId = null;
+    }
+    currentScrollContainer = null; // Clear the reference
+}
+
+function startScrolling(container, direction) {
+    // If already scrolling the same container in the same direction, do nothing
+    if (currentScrollContainer === container && scrollAnimationFrameId) {
+        // We might still need to update direction if the cursor moved from top to bottom edge quickly,
+        // but for simplicity, we assume stop/start will handle this.
+        return;
+    }
+
+    stopScrolling(); // Stop any previous scrolling first
+
+    currentScrollContainer = container;
+
+    const scroll = () => {
+        if (!currentScrollContainer || currentScrollContainer !== container) {
+             // Stop if the container changed or was cleared
+             scrollAnimationFrameId = null;
+             return;
+        }
+
+        const scrollAmount = direction === 'up' ? -SCROLL_SPEED : SCROLL_SPEED;
+        currentScrollContainer.scrollTop += scrollAmount;
+
+        // Continue scrolling as long as the container reference is set and matches
+        scrollAnimationFrameId = requestAnimationFrame(scroll);
+    };
+
+    // Start the animation frame loop
+    scrollAnimationFrameId = requestAnimationFrame(scroll);
+}
+
 
 // --- Event Handlers ---
 
@@ -116,6 +164,7 @@ function handleDragEnd(event) {
     }
 
     // Final cleanup
+    stopScrolling(); // Ensure scrolling stops on drag end
     clearDragStyles(true); // Remove indicator instance and .drag-over-* styles
     draggedCardId = null; // Reset state
     draggedElement = null; // Reset state
@@ -133,8 +182,36 @@ function handleDragOver(event) {
     const targetCard = targetElement.closest('.card');
     const targetGroup = targetElement.closest('.card-group');
     const targetCardsContainer = targetElement.closest('.cards-container');
+    const scrollContainer = targetCardsContainer || targetGroup?.closest('.cards-container'); // Find the scrollable parent
 
     clearDragStyles(false); // Don't remove indicator instance yet
+
+    // --- Auto-Scroll Logic ---
+    if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const mouseY = event.clientY;
+
+        if (mouseY < containerRect.top + SCROLL_TRIGGER_ZONE_HEIGHT) {
+            // Near top edge
+            startScrolling(scrollContainer, 'up');
+        } else if (mouseY > containerRect.bottom - SCROLL_TRIGGER_ZONE_HEIGHT) {
+            // Near bottom edge
+            startScrolling(scrollContainer, 'down');
+        } else {
+            // Not near edges - stop scrolling *this specific container*
+            if (currentScrollContainer === scrollContainer) {
+                 stopScrolling();
+            }
+        }
+        // Keep track of the container we are potentially scrolling, even if not actively scrolling now
+        // This helps handleDragLeave know if it needs to stop scrolling for this container.
+        // Note: We don't reset currentScrollContainer here if not scrolling, handleDragLeave needs it.
+    } else {
+        // Not hovering over a scrollable area or its children
+        stopScrolling(); // Stop any scrolling if cursor moves outside all scrollable areas
+    }
+    // --- End Auto-Scroll Logic ---
+
 
     let validDropTarget = false;
     let indicatorParent = null;
@@ -279,11 +356,25 @@ function handleDragEnter(event) {
         // handleDragOver will display it again if needed when entering a new valid parent.
         dragIndicator.style.display = 'none';
     }
+
+    // --- Stop Scrolling on Leave ---
+    // Check if we are leaving the container that is currently being scrolled (or was last hovered over)
+    const leavingScrollContainer = currentScrollContainer === currentTarget;
+    // Check if we are moving *into* a child of the container we are leaving
+    const enteringChildOfScrollContainer = relatedTarget && currentTarget.contains(relatedTarget);
+
+    // Stop scrolling only if we are truly leaving the scroll container area
+    // (i.e., not just moving between elements *within* the same container).
+    if (leavingScrollContainer && !enteringChildOfScrollContainer) {
+        stopScrolling();
+    }
+    // --- End Stop Scrolling ---
 }
 
 function handleDrop(event) {
     event.preventDefault();
     event.stopPropagation();
+    stopScrolling(); // Stop scrolling immediately on drop
     console.log("Drop event fired");
 
     const droppedCardId = event.dataTransfer.getData('text/plain');
