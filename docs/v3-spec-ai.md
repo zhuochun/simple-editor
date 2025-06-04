@@ -13,8 +13,9 @@ Located at the bottom of the left sidebar, within the element identified by `#ai
     - AI Provider URL (`#ai-provider-url`)
     - AI Model Name (`#ai-model-name`)
     - AI API Key (`#ai-api-key`)
+    - Temperature (`#ai-temperature`) – optional value between 0 and 2
 - **Security:** Input values are masked (`******`) when not focused. The actual values are stored in `data-value` attributes and revealed for editing only when an input field receives focus.
-- **Validation Indicator:** When all three settings (Provider URL, Model Name, API Key) are non-empty, the `#ai-settings-title` element gets the class `ready` (visually indicating readiness, e.g., with a checkmark via CSS).
+- **Validation Indicator:** When the required settings (Provider URL, Model Name, API Key) are non-empty, the `#ai-settings-title` element gets the class `ready` (visually indicating readiness, e.g., with a checkmark via CSS).
 - **Storage:** Settings are saved to `localStorage` under the key `writingToolAiSettings`.
 - **Feature Activation:** When settings are valid (`aiService.areAiSettingsValid()` returns true), the `<body>` element gets the class `ai-ready`, and buttons within elements having the class `.ai-feature` are enabled. Otherwise, these buttons are disabled.
 
@@ -85,7 +86,8 @@ Content-Type: application/json
     { "role": "user", "content": "<Constructed prompt based on action>" }
     // Potentially more messages depending on future context needs
   ],
-  "stream": true
+  "stream": true,
+  "temperature": <optional number>
 }
 ```
 

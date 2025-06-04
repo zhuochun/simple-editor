@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const aiProviderUrlInput = document.getElementById('ai-provider-url');
     const aiModelNameInput = document.getElementById('ai-model-name');
     const aiApiKeyInput = document.getElementById('ai-api-key');
+    const aiTemperatureInput = document.getElementById('ai-temperature');
 
     // --- Constants --- (UI/Rendering related)
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
@@ -1831,6 +1832,7 @@ document.addEventListener('DOMContentLoaded', () => {
             providerUrlInput: aiProviderUrlInput,
             modelNameInput: aiModelNameInput,
             apiKeyInput: aiApiKeyInput,
+            temperatureInput: aiTemperatureInput,
             titleElement: aiSettingsTitle,
             updateAiFeatureVisibilityCallback: updateAiFeatureVisibility
         });
