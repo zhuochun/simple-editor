@@ -26,7 +26,7 @@ const NONE_TEXT = 'None';
 const CARD_SEPARATOR = '\n\n---\n\n';
 
 // --- State ---
-let aiSettings = { providerUrl: '', modelName: '', apiKey: '', isValid: false }; // Local cache
+let aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '', isValid: false }; // Local cache
 let uiElements = {}; // To store references to UI elements
 
 // --- Settings Management ---
@@ -40,12 +40,13 @@ function loadAiSettings() {
             aiSettings.providerUrl = aiSettings.providerUrl || '';
             aiSettings.modelName = aiSettings.modelName || '';
             aiSettings.apiKey = aiSettings.apiKey || '';
+            aiSettings.temperature = aiSettings.temperature || '';
         } catch (e) {
             console.error("Error parsing AI settings from localStorage:", e);
-            aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
+            aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '' };
         }
     } else {
-        aiSettings = { providerUrl: '', modelName: '', apiKey: '' };
+        aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '' };
     }
     aiSettings.isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
     console.log("AI Settings Loaded:", aiSettings);
@@ -56,7 +57,8 @@ function saveAiSettings() {
     localStorage.setItem(AI_SERVICE_CONFIG.STORAGE_KEY_AI_SETTINGS, JSON.stringify({
         providerUrl: aiSettings.providerUrl,
         modelName: aiSettings.modelName,
-        apiKey: aiSettings.apiKey
+        apiKey: aiSettings.apiKey,
+        temperature: aiSettings.temperature
     }));
     aiSettings.isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
     // Notify the main script to update UI visibility
@@ -69,7 +71,7 @@ function saveAiSettings() {
 }
 
 function updateAiSettingsUI() {
-    if (!uiElements.providerUrlInput || !uiElements.modelNameInput || !uiElements.apiKeyInput || !uiElements.titleElement) {
+    if (!uiElements.providerUrlInput || !uiElements.modelNameInput || !uiElements.apiKeyInput || !uiElements.titleElement || !uiElements.temperatureInput) {
         console.warn("AI Settings UI elements not initialized.");
         return;
     }
@@ -77,6 +79,10 @@ function updateAiSettingsUI() {
     uiElements.providerUrlInput.dataset.value = aiSettings.providerUrl || '';
     uiElements.modelNameInput.dataset.value = aiSettings.modelName || '';
     uiElements.apiKeyInput.dataset.value = aiSettings.apiKey || '';
+    if (uiElements.temperatureInput) {
+        uiElements.temperatureInput.dataset.value = aiSettings.temperature || '';
+        uiElements.temperatureInput.value = aiSettings.temperature || '';
+    }
 
     uiElements.providerUrlInput.value = aiSettings.providerUrl ? '******' : '';
     uiElements.modelNameInput.value = aiSettings.modelName ? '******' : '';
@@ -96,25 +102,30 @@ function handleAiInputBlur(event) {
     const input = event.target;
     const key = input.id === 'ai-provider-url' ? 'providerUrl' :
                 input.id === 'ai-model-name' ? 'modelName' :
-                input.id === 'ai-api-key' ? 'apiKey' : null;
+                input.id === 'ai-api-key' ? 'apiKey' :
+                input.id === 'ai-temperature' ? 'temperature' : null;
 
     if (key) {
         aiSettings[key] = input.value; // Update local cache
         input.dataset.value = input.value; // Update data-value
     }
 
-    if (input.value) {
-        input.type = 'password'; // Mask if not empty
-        input.value = '******';
+    if (input.id !== 'ai-temperature') {
+        if (input.value) {
+            input.type = 'password';
+            input.value = '******';
+        } else {
+            input.type = 'text';
+            input.value = '';
+        }
     } else {
-        input.type = 'text'; // Keep as text if empty
-        input.value = '';
+        input.type = 'text';
     }
     saveAiSettings(); // Save on blur
 }
 
 function initializeAiSettings(elements) {
-    uiElements = elements; // Store references { providerUrlInput, modelNameInput, apiKeyInput, titleElement, updateAiFeatureVisibilityCallback }
+    uiElements = elements; // Store references { providerUrlInput, modelNameInput, apiKeyInput, temperatureInput, titleElement, updateAiFeatureVisibilityCallback }
 
     loadAiSettings();
     updateAiSettingsUI();
@@ -130,6 +141,10 @@ function initializeAiSettings(elements) {
     uiElements.modelNameInput.addEventListener('blur', handleAiInputBlur);
     uiElements.apiKeyInput.addEventListener('focus', handleAiInputFocus);
     uiElements.apiKeyInput.addEventListener('blur', handleAiInputBlur);
+    if (uiElements.temperatureInput) {
+        uiElements.temperatureInput.addEventListener('focus', handleAiInputFocus);
+        uiElements.temperatureInput.addEventListener('blur', handleAiInputBlur);
+    }
 
     // Initial visibility update
     if (typeof uiElements.updateAiFeatureVisibilityCallback === 'function') {
@@ -163,7 +178,8 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
             body: JSON.stringify({
                 model: aiSettings.modelName,
                 messages: messages,
-                stream: true // Enable streaming
+                stream: true, // Enable streaming
+                ...(aiSettings.temperature ? { temperature: parseFloat(aiSettings.temperature) } : {})
             })
         });
 

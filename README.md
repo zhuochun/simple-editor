@@ -22,6 +22,10 @@ Model Name:
 - OpenAI: `GPT-4o-mini` (From [Models](https://platform.openai.com/docs/models))
 - OpenRouter: `deepseek/deepseek-chat-v3-0324:free` (From [Models](https://openrouter.ai/models))
 
+Temperature:
+
+- A number between `0` and `2` controlling creativity. Leave empty to use the provider default.
+
 ## Run Locally
 
 Install `nvm` and then Node.js:
