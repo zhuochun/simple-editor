@@ -884,7 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // File download logic
         const blob = new Blob([content.trim()], { type: 'text/plain;charset=utf-8' });
         // Use UTC for timestamp consistency, replace invalid chars
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T').replace('Z', 'Z');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `ProjectExport_${project.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.txt`;
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -910,7 +910,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const jsonContent = JSON.stringify(projectExportObject, null, 2); // Pretty print JSON
             const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
             // Use UTC for timestamp consistency, replace invalid chars
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '').replace('T', 'T').replace('Z', 'Z');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const filename = `ProjectExport_${project.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.json`;
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
