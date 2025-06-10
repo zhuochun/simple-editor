@@ -296,7 +296,7 @@ body.sidebar-collapsed #resizer::before {
 .column {
     background-color: #e9ecef;
     border-radius: 5px;
-    width: 50ch;
+    width: min(50ch, 90vw);
     flex-shrink: 0; /* Prevent columns from shrinking */
     height: 100%; /* Take full height of columns-container */
     display: flex;
@@ -646,4 +646,14 @@ body.ai-ready .ai-feature {
 
 .import-options-menu button:hover {
     background-color: #f0f0f0;
+}
+
+/* --- Responsive Layout Adjustments --- */
+@media (max-width: 600px) {
+    #resizer {
+        width: 15px;
+    }
+    body.sidebar-collapsed #resizer {
+        width: 20px;
+    }
 }
