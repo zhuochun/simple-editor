@@ -58,6 +58,10 @@ function clearDragStyles(removeIndicatorInstance = true) {
     }
 }
 
+function setCompactMode(enabled) {
+    document.body.classList.toggle('dragging-cards', enabled);
+}
+
 // --- Auto-Scroll Helpers ---
 
 function stopScrolling() {
@@ -98,6 +102,43 @@ function startScrolling(container, direction) {
     scrollAnimationFrameId = requestAnimationFrame(scroll);
 }
 
+function attachTouchDragSupport(container) {
+    let touchDataTransfer = null;
+    let touchDragTarget = null;
+
+    container.addEventListener('touchstart', (e) => {
+        const header = e.target.closest('.card-header');
+        if (!header) return;
+        e.preventDefault();
+        touchDragTarget = header;
+        touchDataTransfer = new DataTransfer();
+        handleDragStart({ target: header, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+    }, { passive: false });
+
+    container.addEventListener('touchmove', (e) => {
+        if (!touchDataTransfer) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el) {
+            handleDragOver({ target: el, clientX: t.clientX, clientY: t.clientY, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+        }
+    }, { passive: false });
+
+    container.addEventListener('touchend', (e) => {
+        if (!touchDataTransfer) return;
+        e.preventDefault();
+        const t = e.changedTouches[0];
+        const el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el) {
+            handleDrop({ target: el, clientX: t.clientX, clientY: t.clientY, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+        }
+        handleDragEnd({ target: touchDragTarget });
+        touchDragTarget = null;
+        touchDataTransfer = null;
+    });
+}
+
 
 // --- Event Handlers ---
 
@@ -135,6 +176,7 @@ function handleDragStart(event) {
         }
     });
     ensureDragIndicator(); // Create indicator instance if needed
+    setCompactMode(true);
     console.log(`Drag Start: ID = ${draggedCardId}`);
     // Add logging to confirm state *after* assignment
     console.log(`handleDragStart End: draggedCardId = ${draggedCardId}, draggedElement =`, draggedElement);
@@ -166,6 +208,7 @@ function handleDragEnd(event) {
     // Final cleanup
     stopScrolling(); // Ensure scrolling stops on drag end
     clearDragStyles(true); // Remove indicator instance and .drag-over-* styles
+    setCompactMode(false);
     draggedCardId = null; // Reset state
     draggedElement = null; // Reset state
     console.log("Drag End: State cleared.");
@@ -550,6 +593,9 @@ function initializeDragDrop(columnsContainerEl, dataHelpers, domHelpers) {
     columnsContainerEl.addEventListener('dragenter', handleDragEnter);
     columnsContainerEl.addEventListener('dragleave', handleDragLeave);
     columnsContainerEl.addEventListener('drop', handleDrop);
+
+    // Touch devices use custom handlers to mimic drag events
+    attachTouchDragSupport(columnsContainerEl);
 
     console.log("Drag and drop initialized.");
 }
