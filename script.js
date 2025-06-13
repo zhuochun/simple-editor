@@ -1889,9 +1889,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // 5. Setup Global Listeners & Sidebar State
         addProjectBtn.addEventListener('click', handleAddProject);
         importProjectBtn.addEventListener('click', (e) => displayImportOptions(e.currentTarget)); // Added listener
-        resizer.addEventListener('click', () => {
+        function toggleSidebar() {
             const isCollapsed = document.body.classList.toggle('sidebar-collapsed');
             localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed);
+        }
+        resizer.addEventListener('click', toggleSidebar);
+        resizer.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            toggleSidebar();
         });
         const savedSidebarState = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
         if (savedSidebarState === 'true') {
