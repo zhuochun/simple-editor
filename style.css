@@ -463,6 +463,14 @@ body.ai-ready .ai-feature {
     box-sizing: border-box;
     background-color: transparent; /* Inherit card background */
 }
+
+body.dragging-cards .card-content {
+    padding: 4px;
+}
+
+body.dragging-cards .card {
+    margin-bottom: 4px;
+}
 .card-content.ai-loading {
     font-style: italic;
     color: #555;
@@ -528,6 +536,14 @@ body.ai-ready .ai-feature {
 /* --- Utility --- */
 .hidden {
     display: none !important;
+}
+
+.clamp-3-lines,
+body.dragging-cards .card-content {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3; /* Show at most 3 lines */
 }
 
 /* --- Modal (Simple Placeholder) --- */
