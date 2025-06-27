@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Editor: Hierarchical Writing Tool</title>
+    <meta name="description" content="Simple Editor: The ultimate hierarchical writing tool for novelists, writers, and researchers. Organize nested notes and craft complex documents with ease and visual clarity.">
+
+    <meta property="og:title" content="Simple Editor: Nested Notes - Hierarchical Writing Tool">
+    <meta property="og:description" content="Simple Editor: The ultimate hierarchical writing tool for novelists, writers, and researchers.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.bicrement.com/simple-editor/">
+
+    <link rel="stylesheet" href="style-vertical.css">
+    <link rel="icon" href="favicon.ico" />
+
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+</head>
+<body>
+    <div id="sidebar">
+        <div class="sidebar-top-actions">
+            <button id="import-project-btn" title="Import Project">📥</button>
+            <button id="add-project-btn" title="Add New Project">➕ New Project</button>
+        </div>
+        <div id="project-list">
+            <!-- Project list will be populated here -->
+        </div>
+        <div id="info-links-container">
+            <a href="https://x.com/intent/post?text=A%20non-linear,%20hierarchical%20approach%20to%20drafting%20and%20organizing%20complex%20documents%20https://www.bicrement.com/simple-editor/" target="_blank" rel="noopener noreferrer">Feedback on X</a>
+            (<a href="https://x.com/zhuochun" target="_blank" rel="noopener noreferrer">@zhuochun</a>)
+        </div>
+        <div id="ai-settings-container">
+            <h3 id="ai-settings-title">AI Settings <a href="https://github.com/zhuochun/simple-editor" target="_blank" rel="noopener noreferrer" title="How to Setup AI Configurations">(Guide)</a></h3>
+            <div class="ai-setting">
+                <label for="ai-provider-url">Provider URL:</label>
+                <input type="password" id="ai-provider-url" placeholder="https://.../chat/completions">
+            </div>
+            <div class="ai-setting">
+                <label for="ai-model-name">Model Name:</label>
+                <input type="password" id="ai-model-name" placeholder="Model Name">
+            </div>
+            <div class="ai-setting">
+                <label for="ai-api-key">API Key:</label>
+                <input type="password" id="ai-api-key" placeholder="Bearer Token">
+            </div>
+            <div class="ai-setting">
+                <label for="ai-temperature">Temperature:</label>
+                <input type="text" id="ai-temperature" placeholder="0.7">
+            </div>
+        </div>
+    </div>
+    <div id="resizer"></div>
+    <div id="main-content">
+        <div id="app">
+            <div class="columns-container" id="columnsContainer">
+                <!-- Columns will be dynamically generated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Load modules in order: data -> dragDrop -> aiService -> main script -->
+    <script type="module" src="data.js"></script>
+    <script type="module" src="dragDrop.js"></script>
+    <script type="module" src="aiService.js"></script>
+    <script type="module" src="cardShortcuts.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

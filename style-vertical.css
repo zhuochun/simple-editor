@@ -101,12 +101,11 @@ body.sidebar-collapsed #resizer::before {
 
 .columns-container {
     display: flex;
-    flex-direction: column;
     gap: 15px;
     flex-grow: 1;
     height: 100%; /* Take full height of #app */
-    overflow-y: auto; /* Allow vertical scrolling for rows */
-    padding-right: 15px; /* Space for vertical scrollbar */
+    overflow-x: auto; /* Allow horizontal scrolling for columns */
+    padding-bottom: 15px; /* Space for horizontal scrollbar */
     box-sizing: border-box;
 }
 
@@ -297,10 +296,11 @@ body.sidebar-collapsed #resizer::before {
 .column {
     background-color: #e9ecef;
     border-radius: 5px;
-    width: 100%;
-    flex-shrink: 0; /* Prevent rows from shrinking */
+    width: min(50ch, 90vw);
+    flex-shrink: 0; /* Prevent columns from shrinking */
+    height: 100%; /* Take full height of columns-container */
     display: flex;
-    flex-direction: row;
+    flex-direction: column;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     box-sizing: border-box;
 }
@@ -351,12 +351,9 @@ body.ai-ready .ai-feature {
 
 
 .cards-container {
-    flex-grow: 1; /* Take remaining space in row */
-    display: flex;
-    flex-direction: row;
-    overflow-x: auto; /* Enable horizontal scrolling for cards */
-    overflow-y: hidden;
-    padding: 10px; /* Uniform padding */
+    flex-grow: 1; /* Take remaining space in column */
+    overflow-y: auto; /* Enable vertical scrolling for cards */
+    padding: 19vh 10px 40vh; /* Add significant top/bottom padding */
     min-height: 50px; /* Ensure drop zone exists */
     position: relative; /* For drag-over indicators */
     box-sizing: border-box; /* Include padding in element's height */
@@ -372,7 +369,7 @@ body.ai-ready .ai-feature {
     background-color: #fff; /* Base color, will be overridden */
     border: 1px solid #ccc;
     border-radius: 4px;
-    margin-right: 10px;
+    margin-bottom: 10px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     transition: box-shadow 0.2s ease, background-color 0.3s ease;
     cursor: grab;
@@ -472,7 +469,7 @@ body.dragging-cards .card-content {
 }
 
 body.dragging-cards .card {
-    margin-right: 4px;
+    margin-bottom: 4px;
 }
 .card-content.ai-loading {
     font-style: italic;
@@ -485,7 +482,7 @@ body.dragging-cards .card {
     border: 1px dashed #aaa;
     border-radius: 4px;
     padding-bottom: 10px;
-    margin-right: 10px;
+    margin-bottom: 10px;
     position: relative; /* For header positioning */
     min-height: 40px; /* Ensure drop zone exists */
     background-color: rgba(0, 0, 0, 0.02); /* Slight indication */
