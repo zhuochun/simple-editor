@@ -38,7 +38,8 @@ function createDefaultProject(title = "Untitled Project") {
         lastModified: Date.now(),
         data: {
             columns: defaultColumns,
-            cards: {}
+            cards: {},
+            globalPrompt: ''
         }
     };
 }
@@ -56,6 +57,9 @@ function addProjectData(title, initialProjectData = null) {
 
     if (initialProjectData && validateProjectData(initialProjectData)) { // Use validation logic
         newProject.data = initialProjectData;
+        if (newProject.data.globalPrompt === undefined) {
+            newProject.data.globalPrompt = '';
+        }
         console.log(`Creating project "${newTitle}" with imported data.`);
     }
 
@@ -130,6 +134,9 @@ function getActiveProjectData() {
     proj.data.columns.forEach(col => {
         if (col.prompt === undefined) col.prompt = '';
     });
+    if (proj.data.globalPrompt === undefined) {
+        proj.data.globalPrompt = '';
+    }
     // Colors will be calculated on demand (e.g., during rendering)
     return proj.data;
 }
@@ -619,6 +626,21 @@ function setColumnPromptData(columnIndex, newPrompt) {
     return false;
 }
 
+function getGlobalPromptData() {
+    const projectData = getActiveProjectData();
+    return projectData ? (projectData.globalPrompt || '') : '';
+}
+
+function setGlobalPromptData(newPrompt) {
+    const projectData = getActiveProjectData();
+    if (projectData && projectData.globalPrompt !== newPrompt) {
+        projectData.globalPrompt = newPrompt;
+        updateProjectLastModified();
+        return true;
+    }
+    return false;
+}
+
 function moveCardData(cardId, targetColumnIndex, newParentId, insertBeforeCardId) {
     const projectData = getActiveProjectData();
     const card = projectData?.cards[cardId];
@@ -850,6 +872,8 @@ export {
     addColumnData,
     deleteColumnData,
     setColumnPromptData,
+    getGlobalPromptData,
+    setGlobalPromptData,
     moveCardData,
     reparentChildrenData
 };
