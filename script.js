@@ -530,11 +530,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const aiReady = aiService.areAiSettingsValid();
         const columnData = data.getColumnData(columnIndex); // Use data helper
         const promptIndicator = columnData?.prompt ? '📝' : '';
+        const globalPromptIndicator = data.getGlobalPromptData() ? '📝' : '';
+        const globalPromptButton = columnIndex === 0 ?
+            `<button class="global-prompt-btn ai-feature" title="Set Global Prompt" ${!aiReady ? 'disabled' : ''}>Global Prompt ${globalPromptIndicator}</button>`
+            : '';
 
         columnEl.innerHTML = `
             <div class="column-toolbar">
                  <div class="toolbar-left">
                      <button class="add-card-btn">Add Card</button>
+                     ${globalPromptButton}
                      <button class="add-prompt-btn ai-feature" title="Set Column Prompt" ${!aiReady ? 'disabled' : ''}>Prompt ${promptIndicator}</button>
                  </div>
                  <div class="toolbar-right">
@@ -552,6 +557,10 @@ document.addEventListener('DOMContentLoaded', () => {
         columnEl.querySelector('.add-column-btn').addEventListener('click', handleAddColumn);
         columnEl.querySelector('.delete-column-btn').addEventListener('click', () => handleDeleteColumn(columnIndex));
         columnEl.querySelector('.add-prompt-btn').addEventListener('click', () => handleSetColumnPrompt(columnIndex));
+        if (columnIndex === 0) {
+            const gpBtn = columnEl.querySelector('.global-prompt-btn');
+            if (gpBtn) gpBtn.addEventListener('click', handleSetGlobalPrompt);
+        }
 
         // Double-click on empty space in first column adds root card
         cardsContainer.addEventListener('dblclick', (e) => {
@@ -678,6 +687,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const addColBtn = columnEl.querySelector('.add-column-btn');
         const delColBtn = columnEl.querySelector('.delete-column-btn');
         const addPromptBtn = columnEl.querySelector('.add-prompt-btn');
+        const globalPromptBtn = columnEl.querySelector('.global-prompt-btn');
 
         const projectData = data.getActiveProjectData();
         if (!projectData) return; // Should not happen if renderApp checks
@@ -698,6 +708,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const promptIndicator = columnData?.prompt ? '📝' : '';
             addPromptBtn.textContent = `Prompt ${promptIndicator}`;
             addPromptBtn.disabled = !aiService.areAiSettingsValid();
+        }
+        if (globalPromptBtn && columnIndex === 0) {
+            const globalPromptIndicator = data.getGlobalPromptData() ? '📝' : '';
+            globalPromptBtn.textContent = `Global Prompt ${globalPromptIndicator}`;
+            globalPromptBtn.disabled = !aiService.areAiSettingsValid();
         }
     }
 
@@ -1336,9 +1351,9 @@ document.addEventListener('DOMContentLoaded', () => {
          }
      }
 
-     function handleSetColumnPrompt(columnIndex) {
-         const columnData = data.getColumnData(columnIndex);
-         if (!columnData) return;
+    function handleSetColumnPrompt(columnIndex) {
+        const columnData = data.getColumnData(columnIndex);
+        if (!columnData) return;
          const currentPrompt = columnData.prompt || '';
 
          // Use the createModal helper
@@ -1362,8 +1377,29 @@ document.addEventListener('DOMContentLoaded', () => {
                  }
              }
              // No specific onCancel action needed beyond closing the modal
-         );
-     }
+        );
+    }
+
+    function handleSetGlobalPrompt() {
+        const currentPrompt = data.getGlobalPromptData();
+        const modalTitle = `Set Global Prompt`;
+        const modalContent = `
+            <p>This prompt applies to the entire document.</p>
+            <textarea id="modal-global-prompt-input" placeholder="e.g., Overall writing instructions">${currentPrompt}</textarea>
+        `;
+        createModal(modalTitle, modalContent, "Save Prompt",
+            (modalElement) => {
+                const promptInput = modalElement.querySelector('#modal-global-prompt-input');
+                const newPrompt = promptInput.value.trim();
+                if (data.setGlobalPromptData(newPrompt)) {
+                    data.saveProjectsData();
+                    const colEl = getColumnElementByIndex(0);
+                    if (colEl) updateToolbarButtons(colEl, 0);
+                    console.log('Global prompt updated.');
+                }
+            }
+        );
+    }
 
      // --- Textarea and Focus Handlers ---
 
@@ -1783,8 +1819,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateAiFeatureVisibility(isValid) {
         document.body.classList.toggle('ai-ready', isValid);
         document.querySelectorAll('.ai-feature button').forEach(btn => {
-            // Also check column prompt button specifically
-            if (btn.classList.contains('add-prompt-btn')) {
+            // Also check column and global prompt buttons specifically
+            if (btn.classList.contains('add-prompt-btn') || btn.classList.contains('global-prompt-btn')) {
                  btn.disabled = !isValid;
             } else {
                  // Disable other AI buttons based on validity

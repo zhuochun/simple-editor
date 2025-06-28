@@ -246,7 +246,7 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
  */
 function _getCardContext(card) {
     const context = {
-        globalPrompt: data.getColumnData(0)?.prompt || NONE_TEXT,
+        globalPrompt: data.getGlobalPromptData() || NONE_TEXT,
         columnPrompt: data.getColumnData(card.columnIndex)?.prompt || NONE_TEXT,
         parentCardContent: NONE_TEXT,
         currentCardContent: card.content || '',
