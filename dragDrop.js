@@ -600,4 +600,37 @@ function initializeDragDrop(columnsContainerEl, dataHelpers, domHelpers) {
     console.log("Drag and drop initialized.");
 }
 
-export { initializeDragDrop };
+export {
+    // Constants
+    CSS_CLASSES,
+    SCROLL_SPEED,
+    SCROLL_TRIGGER_ZONE_HEIGHT,
+    // State
+    draggedCardId,
+    draggedElement,
+    dragIndicator,
+    scrollIntervalId,
+    currentScrollContainer,
+    scrollAnimationFrameId,
+    // Helper placeholders (exported for potential external use)
+    getCardElement,
+    getColumnIndex,
+    getCardData,
+    moveCardData,
+    // Helper functions
+    ensureDragIndicator,
+    clearDragStyles,
+    setCompactMode,
+    stopScrolling,
+    startScrolling,
+    attachTouchDragSupport,
+    // Event handlers
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragEnter,
+    handleDragLeave,
+    handleDrop,
+    // Initialization
+    initializeDragDrop
+};
