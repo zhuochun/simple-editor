@@ -1,5 +1,5 @@
 import * as data from './data.js';
-import { initializeDragDrop } from './dragDrop.js';
+import { attachDragDrop } from './dragDrop.js';
 import { aiService } from './aiService.js';
 import { handleCardTextareaKeydown } from './cardShortcuts.js'; // Import the handler
 
@@ -444,7 +444,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         // --- Add Event Listeners ---
-        // Note: Drag listeners are handled by initializeDragDrop via delegation
+        // Note: Drag listeners are handled by attachDragDrop via delegation
 
         const textarea = cardEl.querySelector('.card-content');
         const nameDisplaySpan = cardEl.querySelector('.card-name-display');
@@ -1920,7 +1920,7 @@ document.addEventListener('DOMContentLoaded', () => {
             getCardElement: getCardElement,
             getColumnIndex: getColumnIndex
         };
-        initializeDragDrop(columnsContainer, dataHelpersForDragDrop, domHelpersForDragDrop);
+        attachDragDrop(columnsContainer, dataHelpersForDragDrop, domHelpersForDragDrop);
 
         // 5. Setup Global Listeners & Sidebar State
         addProjectBtn.addEventListener('click', handleAddProject);
