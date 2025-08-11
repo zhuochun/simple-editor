@@ -1,7 +1,11 @@
-import * as data from './data.js';
-import { attachDragDrop } from './dragDrop.js';
-import { aiService } from './aiService.js';
+import DataService, { MIN_COLUMNS } from './src/services/data/DataService.js';
+import AIService from './src/services/ai/AIService.js';
+import DragDropService from './src/services/drag/DragDropService.js';
 import { handleCardTextareaKeydown } from './cardShortcuts.js'; // Import the handler
+
+const data = new DataService();
+const aiService = new AIService(data);
+const dragDropService = new DragDropService(data);
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
@@ -418,7 +422,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardEl.className = 'card';
         cardEl.dataset.cardId = cardData.id;
 
-        // Color should be pre-calculated by data.js
+        // Color should be pre-calculated by DataService
         cardEl.style.backgroundColor = cardData.color || data.getColorForCard(cardData); // Fallback just in case
 
         const displayName = cardData.name ? cardData.name : `#${cardData.id.slice(-4)}`;
@@ -444,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
 
         // --- Add Event Listeners ---
-        // Note: Drag listeners are handled by attachDragDrop via delegation
+        // Note: Drag listeners are handled by dragDropService.attach via delegation
 
         const textarea = cardEl.querySelector('.card-content');
         const nameDisplaySpan = cardEl.querySelector('.card-name-display');
@@ -654,9 +658,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Determine how many columns need to be rendered in the DOM.
-        // This is the maximum of the minimum required columns (data.MIN_COLUMNS)
+        // This is the maximum of the minimum required columns (MIN_COLUMNS)
         // and the actual number of columns defined in the project data.
-        const columnsToRenderCount = Math.max(data.MIN_COLUMNS, projectData.columns.length);
+        const columnsToRenderCount = Math.max(MIN_COLUMNS, projectData.columns.length);
 
         // Loop through the required number of columns.
         for (let i = 0; i < columnsToRenderCount; i++) {
@@ -699,7 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
         addColBtn.classList.toggle('hidden', !isRightmost); // Only show on last column
 
         const columnCards = data.getColumnCards(columnIndex); // Use data helper
-        const canDelete = isRightmost && numColumnsInData > data.MIN_COLUMNS && columnCards.length === 0;
+        const canDelete = isRightmost && numColumnsInData > MIN_COLUMNS && columnCards.length === 0;
         delColBtn.classList.toggle('hidden', !canDelete);
         delColBtn.disabled = !canDelete;
 
@@ -1920,7 +1924,7 @@ document.addEventListener('DOMContentLoaded', () => {
             getCardElement: getCardElement,
             getColumnIndex: getColumnIndex
         };
-        attachDragDrop(columnsContainer, dataHelpersForDragDrop, domHelpersForDragDrop);
+        dragDropService.attach(columnsContainer, dataHelpersForDragDrop, domHelpersForDragDrop);
 
         // 5. Setup Global Listeners & Sidebar State
         addProjectBtn.addEventListener('click', handleAddProject);
