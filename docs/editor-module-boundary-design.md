@@ -4,13 +4,14 @@ Status: Implemented
 
 ## Decision
 
-Reshape the browser application incrementally around deep project-state and project-format boundaries. Retain the current drag/drop module and browser-only runtime. Do not introduce a framework, build system, server, or replacement data model.
+Reshape the browser application around deep project-state, project-format, editor-view, and AI-workflow boundaries. Retain the current drag/drop module and browser-only runtime. Do not introduce a framework, build system, server, or replacement data model.
 
 ## Pressure and horizon
 
 - Project mutations, timestamps, persistence, and rendering are currently coordinated by callers.
 - Project import/export rules are distributed between UI and state code.
-- AI prompt construction reaches directly into project state while AI result lifecycle remains in the main controller.
+- The first modularization pass largely relocated `script.js` into a 1,400-line `editorController.js`; this revision corrects that ownership rather than treating file relocation as completion.
+- `editorDom.js` contains shared DOM mechanics, while `editorView.js` now owns card, column, group, toolbar, and project-list rendering.
 - Drag and touch changes have remained local to `dragDrop.js`, so that boundary is retained.
 - The design assumes continued feature maintenance. If the editor becomes feature-complete, further splitting should stop.
 
@@ -24,30 +25,36 @@ Owns projects, active-project selection, hierarchy invariants, ordering, derived
 
 Owns deterministic JSON parsing, version compatibility, normalization, structural validation, JSON export envelopes, and plain-text traversal. Invalid input has no state effects.
 
-### Editor view and controller
+### Editor view
 
-Own DOM creation, rendering, focus, modal presentation, event wiring, and mapping mutation results to UI updates. It does not own project representation or compatibility rules.
+Owns card, group, column, toolbar, and project-list DOM creation and presentation. It owns local edit lifecycles, focus, modal presentation, hierarchy highlighting, and rendering a supplied project snapshot. It emits user intent through callbacks and does not mutate project state, select AI policies, or know persistence and format rules.
+
+### Editor controller
+
+Composes state, view, transfer, interaction adapters, and AI workflow. It maps view intent to complete project commands and requests a view refresh from command results. It does not construct card or column DOM, implement edit widgets, or own AI placeholders and streaming cleanup.
 
 ### Interaction adapters
 
 `dragDrop.js` and `cardShortcuts.js` translate browser gestures into project commands. They own gesture state and navigation interpretation, not multi-step project mutations or persistence.
 
-### AI service
+### AI workflow and service
 
-Owns settings, prompt construction, and the OpenAI-compatible streaming request. It receives an explicit project-context snapshot and does not import project state. The controller owns placement, placeholder presentation, and the visible streaming lifecycle.
+`aiWorkflow.js` owns AI action selection, target placement, placeholder cards, multipart result placement, visible streaming state, and success/error cleanup. It depends on explicit state commands, an explicit view interface, and `aiService.js`. `aiService.js` continues to own settings, prompt construction, and the OpenAI-compatible streaming request using an explicit project-context snapshot.
 
 ## Implemented module map
 
 - `script.js` is the browser bootstrap and has no application decisions.
-- `editorController.js` composes the editor, maps user actions to project commands, and owns AI placement and visible streaming lifecycle.
-- `editorDom.js` owns DOM lookup, focus, hierarchy scrolling and highlighting, group-header presentation, textarea sizing, and modal lifecycle.
+- `editorController.js` is the composition root and maps user intent to project commands.
+- `editorView.js` owns editor and project-list rendering plus local editing lifecycles.
+- `editorDom.js` owns shared focus, hierarchy scrolling and highlighting, textarea sizing, and modal mechanics used by the view and workflows.
+- `aiWorkflow.js` owns AI placement and the visible streaming lifecycle.
 - `projectState.js` is the sole project-state, hierarchy, ordering, timestamp, and persistence authority.
 - `projectFormat.js` owns versioned parsing, validation, normalization, and export serialization.
 - `projectTransfer.js` owns browser import/export effects and invokes project creation only after format validation succeeds.
 - `cardShortcuts.js` and `dragDrop.js` remain interaction adapters that call complete project commands.
 - `aiService.js` owns AI settings, prompt construction, and streaming transport using explicit context snapshots.
 
-The former `data.js` and monolithic `script.js` ownership paths have been retired rather than retained as compatibility wrappers.
+The former `data.js` and monolithic `script.js` ownership paths are retired. The relocated rendering and AI-workflow implementations have also been removed from `editorController.js`; these are ownership transfers, not pass-through wrappers.
 
 ## Interface direction
 
@@ -56,6 +63,8 @@ The former `data.js` and monolithic `script.js` ownership paths have been retire
 - Project mutations persist under the state owner's control.
 - Import produces a normalized value before the state owner creates a project.
 - AI generation receives an explicit context object.
+- The view receives data to render and emits intent; it does not import `projectState.js`.
+- The AI workflow receives explicit state and view capabilities; it does not reach through controller closure state.
 
 ## Preserved commitments
 
@@ -65,9 +74,11 @@ The former `data.js` and monolithic `script.js` ownership paths have been retire
 
 ## Adoption and stop conditions
 
-Adopt in executable vertical slices: project-format compatibility, state access and transaction ownership, keyboard composite commands, then AI context decoupling. Each slice must leave one authoritative path and pass repository tests plus browser smoke checks.
+Adopt in executable vertical slices: transfer rendering and edit lifecycle to the view, transfer AI placement and streaming lifecycle to the AI workflow, then reduce the controller to composition and command mapping. Each slice must leave one authoritative path and pass repository tests plus browser smoke checks.
 
 Stop and reopen the design if an existing stored project violates the accepted hierarchy contract, a browser consumer depends on exported raw state, or preserving gesture and AI behavior requires duplicate state ownership.
+
+This design is implemented because `editorController.js` no longer constructs card or column DOM, implements local rename/content-edit widgets, or owns AI placeholder and streaming-result behavior.
 
 Reconsider further modules only when subsequent change history shows another repeated cross-boundary pressure.
 
@@ -75,4 +86,8 @@ Reconsider further modules only when subsequent change history shows another rep
 
 - State-command tests cover persistence, split, merge, and AI context snapshots.
 - Format and transfer tests cover legacy normalization, unsupported versions, structural rejection, export envelopes, depth-first text output, and atomic project creation/selection.
-- Browser regression checks cover module loading, rendering, persistence, keyboard operations, project transfer UI, and placement tooltips.
+- View tests cover card and group presentation policy; browser checks cover rendered cards, columns, edit-intent wiring, and rename finalization through the view interface. `editorView.js` does not import project state.
+- AI workflow tests cover sibling/child placement, placeholder completion, and busy-state cleanup through explicit collaborators without invoking a remote AI provider.
+- Drag-command tests cover busy rejection, affected-column rendering, and moves that require a new column; browser logs confirm the drag adapter initializes against rendered draggable cards.
+- The 26-test non-AI suite, syntax/static checks, and browser checks cover rendering, persistence, rename finalization, split/merge, card add/delete, project transfer UI, AI-control visibility, placement tooltips, and zero runtime errors.
+- `editorController.js` is 483 lines of composition, project/card command mapping, prompt orchestration, startup, and adapter wiring; it contains no DOM construction, edit-widget implementation, AI placeholder policy, or streaming callbacks.

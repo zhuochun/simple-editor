@@ -16,6 +16,20 @@ function getTotalLines(textarea) {
     return textarea.value.split('\n').length;
 }
 
+function runStructuralShortcut(textarea, operation) {
+    textarea.dataset.skipBlurSave = 'true';
+    try {
+        const result = operation();
+        if (!result.success) {
+            delete textarea.dataset.skipBlurSave;
+        }
+        return result;
+    } catch (error) {
+        delete textarea.dataset.skipBlurSave;
+        throw error;
+    }
+}
+
 // Main keyboard shortcut handler for card textareas
 export function handleCardTextareaKeydown(event, helpers) {
     const textarea = event.target;
@@ -41,7 +55,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (ctrlPressed) {
                 event.preventDefault();
                 console.log(`Shortcut: Ctrl+Enter (Split Below) on card ${cardId}`);
-                const result = helpers.splitCard(cardId, textarea.value, textarea.selectionStart, false);
+                const result = runStructuralShortcut(textarea, () =>
+                    helpers.splitCard(cardId, textarea.value, textarea.selectionStart, false)
+                );
                 if (result.success) {
                     helpers.focusCardTextarea(result.newCardId, 'start');
                 }
@@ -50,7 +66,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             else if (altPressed) {
                 event.preventDefault();
                 console.log(`Shortcut: Alt+Enter (Split Child) on card ${cardId}`);
-                const result = helpers.splitCard(cardId, textarea.value, textarea.selectionStart, true);
+                const result = runStructuralShortcut(textarea, () =>
+                    helpers.splitCard(cardId, textarea.value, textarea.selectionStart, true)
+                );
                 if (result.success) {
                     helpers.focusCardTextarea(result.newCardId, 'start');
                 }
@@ -208,7 +226,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (!ctrlPressed && !altPressed && textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
                 event.preventDefault();
                 console.log(`Shortcut: Backspace (start) on card ${cardId}`);
-                const result = helpers.mergeCard(cardId, 'previous', textarea.value);
+                const result = runStructuralShortcut(textarea, () =>
+                    helpers.mergeCard(cardId, 'previous', textarea.value)
+                );
                 if (result.success) {
                     helpers.focusCardTextarea(result.focusCardId, result.cursorPosition);
                 }
@@ -220,7 +240,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (!ctrlPressed && !altPressed && textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length) {
                 event.preventDefault();
                 console.log(`Shortcut: Delete (end) on card ${cardId}`);
-                const result = helpers.mergeCard(cardId, 'next', textarea.value);
+                const result = runStructuralShortcut(textarea, () =>
+                    helpers.mergeCard(cardId, 'next', textarea.value)
+                );
                 if (result.success) {
                     helpers.focusCardTextarea(result.focusCardId, result.cursorPosition);
                 }
