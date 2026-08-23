@@ -1,6 +1,9 @@
-# Editor Module Boundary Design
+# V7: Editor Module Boundaries
 
-Status: Implemented
+Status: Implemented project
+
+> Current authority: [Architecture](../architecture.md) and [Domain](../domain.md)
+> Completed on branch `codex/modular-split-architecture`
 
 ## Decision
 

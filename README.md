@@ -6,6 +6,14 @@ A non-linear, hierarchical approach to drafting and organizing complex documents
 
 All data are stored in your browser. You can export a project in plain text file for backup easily.
 
+## Documentation
+
+- [Domain and current behavior](docs/domain.md)
+- [Data schema](docs/data-schema.md)
+- [Architecture](docs/architecture.md)
+- [Testing](docs/testing.md)
+- [Historical project documents](docs/projects/README.md)
+
 ## AI Setup
 
 You need to bring your own keys, and configure them in the sidebar.

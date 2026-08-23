@@ -1,8 +1,8 @@
-# Simple Editor Behavior
+# Simple Editor Domain
 
 Status: Current
 
-This document is the canonical product behavior specification for Simple Editor. It supersedes the versioned specifications previously stored in this directory.
+This document is the canonical current product and domain specification for Simple Editor. Historical change specifications are retained under [`projects/`](projects/README.md).
 
 ## Editor structure
 
