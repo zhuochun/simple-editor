@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getCardDisplayName, getGroupPresentation } from '../editorView.js';
+import { createEditorView, getCardDisplayName, getGroupPresentation } from '../editorView.js';
 
 test('card presentation uses names when present and IDs as the fallback', () => {
     assert.deepEqual(getCardDisplayName({ id: 'card-123456', name: null }, 50), {
@@ -29,4 +29,27 @@ test('group presentation owns name and content preview rules', () => {
             title: 'Children of Named parent'
         }
     );
+});
+
+test('view updates group headers through the same presentation policy', () => {
+    const parentCard = { id: 'card-123456', name: null, content: 'Updated content beyond limit' };
+    const header = {};
+    const view = createEditorView({
+        columnsContainer: {},
+        projectListContainer: {},
+        addProjectButton: {},
+        model: { getCard: () => parentCard },
+        actions: {},
+        dom: { getGroupElement: () => ({ querySelector: () => header }) },
+        isAiReady: () => false,
+        cardNameMaxLength: 50,
+        groupHeaderPreviewLength: 7
+    });
+
+    view.updateGroupHeaderDisplay(parentCard.id);
+
+    assert.deepEqual(header, {
+        textContent: '>> #3456: Updated...',
+        title: 'Children of #3456: Updated content beyond limit'
+    });
 });

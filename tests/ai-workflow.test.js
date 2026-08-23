@@ -48,58 +48,45 @@ test('unknown AI actions do not produce an executable plan', () => {
 });
 
 test('AI workflow owns placeholder completion and releases its busy lifecycle without a remote call', () => {
-    const originalDocument = globalThis.document;
-    const originalAlert = globalThis.alert;
-    const originalAnimationFrame = globalThis.requestAnimationFrame;
-    const classList = { add() {}, remove() {}, contains() { return false; }, toggle() {} };
-    const placeholderTextarea = { value: 'AI is thinking...', classList };
     const updates = [];
+    const lockedStates = [];
+    const display = { content: 'AI is thinking...', loading: true };
     let serviceArguments;
-    let toolbarUpdates = 0;
 
-    globalThis.document = {
-        body: { classList },
-        querySelectorAll: () => []
-    };
-    globalThis.alert = () => {};
-    globalThis.requestAnimationFrame = callback => callback();
-
-    try {
-        const workflow = createAiWorkflow({
-            projectState: {
-                getCard: id => id === 'source' ? { id, columnIndex: 0, parentId: null, content: 'Source' } : { id },
-                getSiblingCards: () => [{ id: 'source' }],
-                getCardContextData: () => ({ card: { id: 'source' } }),
-                updateCardContentData: (id, content) => { updates.push({ id, content }); return true; }
-            },
-            aiService: {
-                areAiSettingsValid: () => true,
-                generateContinuation: args => { serviceArguments = args; }
-            },
-            columnsContainer: { querySelectorAll: () => [] },
-            projectListContainer: { querySelectorAll: () => [] },
-            addProjectButton: { disabled: false, classList },
-            addCard: () => 'placeholder',
-            deleteCard: () => {},
-            getCardElement: () => ({ querySelector: () => placeholderTextarea }),
-            autoResizeTextarea: () => {},
-            createModal: () => {},
-            focusCardTextarea: () => {},
+    const workflow = createAiWorkflow({
+        projectState: {
+            getCard: id => id === 'source' ? { id, columnIndex: 0, parentId: null, content: 'Source' } : { id },
+            getSiblingCards: () => [{ id: 'source' }],
+            getCardContextData: () => ({ card: { id: 'source' } }),
+            updateCardContentData: (id, content) => { updates.push({ id, content }); return true; }
+        },
+        aiService: {
+            areAiSettingsValid: () => true,
+            generateContinuation: args => { serviceArguments = args; }
+        },
+        addCard: () => 'placeholder',
+        deleteCard: () => {},
+        view: {
+            setInteractionLocked: locked => lockedStates.push(locked),
+            createCardStream: () => ({
+                append: delta => { display.content += delta; },
+                replace: content => { display.content = content; },
+                finish: () => { display.loading = false; }
+            }),
             updateGroupHeaderDisplay: () => {},
-            updateAllToolbarButtons: () => { toolbarUpdates += 1; }
-        });
+            focusCard: () => {},
+            showCustomAiPrompt: () => {},
+            updateAiFeatureVisibility: () => {}
+        }
+    });
 
-        workflow.continue('source');
-        assert.equal(workflow.isBusy(), true);
-        assert.equal(typeof serviceArguments.onDone, 'function');
+    workflow.continue('source');
+    assert.equal(workflow.isBusy(), true);
+    assert.equal(typeof serviceArguments.onDone, 'function');
 
-        serviceArguments.onDone('Generated result');
-        assert.equal(workflow.isBusy(), false);
-        assert.deepEqual(updates, [{ id: 'placeholder', content: 'Generated result' }]);
-        assert.equal(toolbarUpdates, 1);
-    } finally {
-        globalThis.document = originalDocument;
-        globalThis.alert = originalAlert;
-        globalThis.requestAnimationFrame = originalAnimationFrame;
-    }
+    serviceArguments.onDone('Generated result');
+    assert.equal(workflow.isBusy(), false);
+    assert.deepEqual(updates, [{ id: 'placeholder', content: 'Generated result' }]);
+    assert.equal(display.loading, false);
+    assert.deepEqual(lockedStates, [true, false]);
 });
