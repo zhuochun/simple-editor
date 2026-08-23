@@ -19,8 +19,6 @@ Operational Guidelines:
 Maintain clarity, coherence, and consistency, always respecting the discrete, card-based nature of the writing environment.`
 };
 
-import * as data from './data.js'; // Import data module
-
 // --- Constants ---
 const NONE_TEXT = 'None';
 const CARD_SEPARATOR = '\n\n---\n\n';
@@ -240,60 +238,35 @@ async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
 // --- Helper Function for Context Gathering ---
 
 /**
- * Gathers context strings for a given card.
- * @param {object} card - The card object.
- * @returns {object} An object containing various context strings.
+ * Converts a project context snapshot into prompt-ready strings.
+ * @param {object} snapshot - Context supplied by the project state owner.
+ * @returns {object} Prompt-ready context strings.
  */
-function _getCardContext(card) {
-    const context = {
-        globalPrompt: data.getGlobalPromptData() || NONE_TEXT,
-        columnPrompt: data.getColumnData(card.columnIndex)?.prompt || NONE_TEXT,
-        parentCardContent: NONE_TEXT,
-        currentCardContent: card.content || '',
-        precedingSiblingsContent: NONE_TEXT,
-        followingSiblingsContent: NONE_TEXT,
-        existingChildrenContent: NONE_TEXT,
-        targetColumnPrompt: NONE_TEXT,
+function _getCardContext(snapshot = {}) {
+    const joinContent = value => Array.isArray(value)
+        ? (value.join(CARD_SEPARATOR) || NONE_TEXT)
+        : (value || NONE_TEXT);
+
+    return {
+        globalPrompt: snapshot.globalPrompt || NONE_TEXT,
+        columnPrompt: snapshot.columnPrompt || NONE_TEXT,
+        parentCardContent: snapshot.parentCardContent === null
+            ? `${NONE_TEXT} (This is a root card)`
+            : (snapshot.parentCardContent || NONE_TEXT),
+        currentCardContent: snapshot.currentCardContent || '',
+        precedingSiblingsContent: joinContent(snapshot.precedingSiblingsContent),
+        followingSiblingsContent: joinContent(snapshot.followingSiblingsContent),
+        existingChildrenContent: joinContent(snapshot.existingChildrenContent),
+        targetColumnPrompt: snapshot.targetColumnPrompt || NONE_TEXT
     };
-
-    // Parent Context
-    const parentCard = card.parentId ? data.getCard(card.parentId) : null;
-    context.parentCardContent = parentCard?.content || `${NONE_TEXT} (This is a root card)`;
-
-    // Sibling Context
-    const siblings = data.getSiblingCards(card.id);
-    const precedingSiblings = siblings.filter(c => c.order < card.order);
-    const followingSiblings = siblings.filter(c => c.order > card.order);
-
-    context.precedingSiblingsContent = precedingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join(CARD_SEPARATOR) || NONE_TEXT;
-
-    context.followingSiblingsContent = followingSiblings
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join(CARD_SEPARATOR) || NONE_TEXT;
-
-    // Child Context
-    const childCards = data.getChildCards(card.id, card.columnIndex + 1);
-    context.existingChildrenContent = childCards
-        .filter(c => c.content && c.content.trim())
-        .map(c => c.content.trim())
-        .join(CARD_SEPARATOR) || NONE_TEXT;
-
-    // Target Column Prompt (for next column)
-    context.targetColumnPrompt = data.getColumnData(card.columnIndex + 1)?.prompt || NONE_TEXT;
-
-    return context;
 }
 
 
 // --- AI Generation Functions ---
 
-function generateContinuation({ card, onChunk, onError, onDone }) {
+function generateContinuation({ context: contextSnapshot, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const context = _getCardContext(card);
+    const context = _getCardContext(contextSnapshot);
 
     // Construct the prompt using fetched context
     let userPromptContent = `# Overall Document Context
@@ -336,9 +309,9 @@ Focus on:
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateSummary({ card, onChunk, onError, onDone }) {
+function generateSummary({ context: contextSnapshot, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const context = _getCardContext(card);
+    const context = _getCardContext(contextSnapshot);
 
     // Construct the prompt using fetched context
     let userPromptContent = `# Overall Document Context
@@ -373,9 +346,9 @@ ${context.currentCardContent}
 
 ${context.existingChildrenContent}
 
-# Task: Generate Concise Summary
+# Task: Generate Following Summary Card
 
-Based on all provided context, generate a **concise summary** that synthesizes the core information from *both* the "Source Card Content" and its "Existing Child Cards Content". The output should be a single, significantly shorter text block capturing the essence of this card and its direct children.
+Based on all provided context, generate a **concise summary** that synthesizes the core information from *both* the "Source Card Content" and its "Existing Child Cards Content". The output becomes one new sibling immediately after the source card; it does not replace or modify the source.
 
 Focus on:
 - **Condensing Information:** Identify and extract the most critical points, arguments, or themes from the combined source and child content.
@@ -384,7 +357,7 @@ Focus on:
 - **Brevity:** The primary goal is length reduction while retaining essential meaning.
 - **Contextual Coherence:** The summary should still make sense within the sequence (considering Parent, Preceding, and Following Siblings) and adhere to Global/Column prompts.
 - **Writing Style:** Maintain the established writing style evident in the context (Source Card, Parent, Siblings), unless specific instructions dictate otherwise.
-- **Direct Output:** Output *only* the generated summary text. Do not include introductions, explanations, or section titles. It should be a single block of plain text ready to potentially replace the Source Card's content or be used elsewhere.
+- **Direct Output:** Output *only* the generated summary text for the new following sibling. Do not include introductions, explanations, or section titles.
  `;
 
     messages.push({ role: "user", content: userPromptContent });
@@ -393,9 +366,9 @@ Focus on:
 }
 
 
-function generateBreakdown({ card, onChunk, onError, onDone }) {
+function generateBreakdown({ context: contextSnapshot, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const context = _getCardContext(card);
+    const context = _getCardContext(contextSnapshot);
 
     // Construct the prompt using fetched context
     let userPromptContent = `# Overall Document Context
@@ -443,9 +416,9 @@ Focus on:
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateExpand({ card, onChunk, onError, onDone }) {
+function generateExpand({ context: contextSnapshot, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const context = _getCardContext(card);
+    const context = _getCardContext(contextSnapshot);
 
     // Construct the prompt using fetched context
     let userPromptContent = `# Overall Document Context
@@ -478,17 +451,17 @@ ${context.currentCardContent}
 
 ${context.existingChildrenContent}
 
-# Task: Enrich Original Card
+# Task: Generate Expansion Child Card
 
-Rewrite the "Original Card Content" to create a **significantly longer and more detailed version**. The goal is to enhance and expand upon the existing ideas within the scope of this single card.
+Generate a **significantly more detailed expansion** of the "Original Card Content" as one new child card. The new child elaborates on the source while leaving the source card and its existing children unchanged.
 
 Focus on:
 - **Adding Depth:** Incorporate relevant supporting details, examples, explanations, descriptions, definitions, context, or narrative elements that elaborate on the original points.
 - **Maintaining Focus:** Ensure all added content directly relates to and expands upon the core subject matter established in the "Original Card Content". Do not introduce entirely new, unrelated topics.
 - **Coherence & Flow:** The enriched content must remain consistent with the "Parent Card Content" and the overall document context (Global/Column Prompts). It should also flow logically *from* the "Preceding Sibling Cards Content" and provide a smooth transition *towards* the "Following Sibling Cards Content" (if it exists).
-- **Supporting Children:** If "Existing Child Cards Content" is provided, the enriched version should ideally provide a stronger foundation or smoother transition into those child topics.
+- **Complementing Children:** If "Existing Child Cards Content" is provided, add useful depth without merely repeating those child topics.
 - **Writing Style:** Analyze and maintain the established writing style (tone, voice, vocabulary, formality) evident in the surrounding context (Parent, Siblings, Original Content), unless specific style instructions exist in the prompts.
-- **Direct Output:** Output *only* the complete, enriched text intended to replace the original content of the current card. Do not include introductions, summaries, or the original text unless it's part of the rewritten version.
+- **Direct Output:** Output *only* the plain text for the new expansion child card. Do not include introductions, summaries, or placement instructions.
 `;
 
     messages.push({ role: "user", content: userPromptContent });
@@ -496,9 +469,9 @@ Focus on:
     streamChatCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateCustom({ card, userPrompt, onChunk, onError, onDone }) {
+function generateCustom({ context: contextSnapshot, userPrompt, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
-    const context = _getCardContext(card);
+    const context = _getCardContext(contextSnapshot);
 
     // Construct the prompt using fetched context and the user's specific request
     let userPromptContent = `# Overall Document Context

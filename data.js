@@ -11,6 +11,8 @@ const GROUP_LIGHTNESS_STEP_DOWN = 3; // How much darker each card in a group get
 // --- State ---
 let projects = {}; // { projectId: { id, title, lastModified, data: { columns: [{id, prompt?}], cards: {} } } }
 let activeProjectId = null;
+let projectTransactionDepth = 0;
+let projectSavePending = false;
 
 // --- Utility Functions ---
 function generateId(prefix = 'id_') {
@@ -18,13 +20,6 @@ function generateId(prefix = 'id_') {
 }
 
 // --- Project Management ---
-
-// Added validation function (needed by addProjectData for import)
-function validateProjectData(importedData) {
-    if (!importedData || typeof importedData !== 'object') return false;
-    // Basic check: presence of columns array and cards object
-    return Array.isArray(importedData.columns) && typeof importedData.cards === 'object' && importedData.cards !== null;
-}
 
 function createDefaultProject(title = "Untitled Project") {
     const projectId = generateId('proj_');
@@ -55,15 +50,13 @@ function addProjectData(title, initialProjectData = null) {
     const newTitle = title.trim() || "Untitled Project";
     const newProject = createDefaultProject(newTitle);
 
-    if (initialProjectData && validateProjectData(initialProjectData)) { // Use validation logic
+    if (initialProjectData) {
         newProject.data = initialProjectData;
-        if (newProject.data.globalPrompt === undefined) {
-            newProject.data.globalPrompt = '';
-        }
         console.log(`Creating project "${newTitle}" with imported data.`);
     }
 
     projects[newProject.id] = newProject;
+    queueProjectsSave();
     return newProject; // Return the created project data
 }
 
@@ -88,6 +81,8 @@ function deleteProjectData(projectIdToDelete) {
         }
     }
     activeProjectId = newActiveId; // Update internal state
+    queueProjectsSave();
+    saveActiveProjectId();
     return { deleted: true, newActiveId: newActiveId, deletedTitle: projectTitle };
 }
 
@@ -96,6 +91,7 @@ function switchActiveProject(newProjectId) {
         return false; // Project doesn't exist or already active
     }
     activeProjectId = newProjectId;
+    saveActiveProjectId();
     return true;
 }
 
@@ -107,10 +103,22 @@ function updateProjectLastModified(projectId = activeProjectId) {
     return false;
 }
 
+function getProjects() {
+    return Object.values(projects);
+}
+
+function getProject(projectId) {
+    return projects[projectId] || null;
+}
+
+function getActiveProjectId() {
+    return activeProjectId;
+}
+
 function updateProjectTitle(projectId, newTitle) {
      if (projectId && projects[projectId] && newTitle && newTitle !== projects[projectId].title) {
          projects[projectId].title = newTitle;
-         updateProjectLastModified(projectId);
+         markProjectChanged(projectId);
          return true;
      }
      return false;
@@ -151,20 +159,12 @@ function saveProjectsData() {
     }
 }
 
-function saveActiveProjectData() {
-    const activeData = getActiveProjectData();
-    if (activeData && activeProjectId) {
-        // This function might be redundant if saveProjectsData() is always called after modifications.
-        // However, if there are scenarios where only the active project's data needs saving
-        // without saving *all* projects, this could be useful.
-        // For now, it relies on the fact that getActiveProjectData() returns a direct reference,
-        // so modifications are already in the 'projects' object.
-        // We just need to ensure saveProjectsData() is called.
-        saveProjectsData(); // For now, just call the main save function
-        console.log(`Active project data (${activeProjectId}) implicitly saved via saveProjectsData.`);
-    } else {
-        console.warn("Attempted to save active project data, but no active project found.");
+function queueProjectsSave() {
+    if (projectTransactionDepth > 0) {
+        projectSavePending = true;
+        return;
     }
+    saveProjectsData();
 }
 
 
@@ -173,6 +173,25 @@ function saveActiveProjectId() {
         localStorage.setItem(ACTIVE_PROJECT_ID_KEY, activeProjectId);
     } else {
         localStorage.removeItem(ACTIVE_PROJECT_ID_KEY);
+    }
+}
+
+function markProjectChanged(projectId = activeProjectId) {
+    if (!updateProjectLastModified(projectId)) return false;
+    queueProjectsSave();
+    return true;
+}
+
+function withProjectTransaction(operation) {
+    projectTransactionDepth += 1;
+    try {
+        return operation();
+    } finally {
+        projectTransactionDepth -= 1;
+        if (projectTransactionDepth === 0 && projectSavePending) {
+            projectSavePending = false;
+            saveProjectsData();
+        }
     }
 }
 
@@ -381,6 +400,27 @@ function getAncestorIds(cardId) {
     return ancestors;
 }
 
+function getCardContextData(cardId) {
+    const card = getCard(cardId);
+    if (!card) return null;
+
+    const siblings = getSiblingCards(cardId);
+    const contentFrom = cards => cards
+        .filter(item => item.content?.trim())
+        .map(item => item.content.trim());
+
+    return {
+        globalPrompt: getGlobalPromptData(),
+        columnPrompt: getColumnData(card.columnIndex)?.prompt || '',
+        parentCardContent: card.parentId ? (getCard(card.parentId)?.content || '') : null,
+        currentCardContent: card.content || '',
+        precedingSiblingsContent: contentFrom(siblings.filter(sibling => sibling.order < card.order)),
+        followingSiblingsContent: contentFrom(siblings.filter(sibling => sibling.order > card.order)),
+        existingChildrenContent: contentFrom(getChildCards(card.id, card.columnIndex + 1)),
+        targetColumnPrompt: getColumnData(card.columnIndex + 1)?.prompt || ''
+    };
+}
+
 // --- Color Calculation ---
 /**
  * Calculates the HSL color string for a given card based on its position and hierarchy.
@@ -512,8 +552,7 @@ function addCardData(columnIndex, parentId = null, initialContent = '', insertBe
          addColumnData(false); // Add column data without saving yet
     }
 
-    updateProjectLastModified();
-    // Note: saveProjectsData() should be called by the caller (e.g., script.js) after DOM updates
+    markProjectChanged();
 
     console.log(`Card data ${newCardId} added to col ${columnIndex}, parent: ${parentId}, order: ${newCard.order}`);
     return newCard; // Return the full card object
@@ -523,8 +562,7 @@ function updateCardContentData(cardId, newContent) {
     const card = getCard(cardId);
     if (card && card.content !== newContent) {
         card.content = newContent;
-        updateProjectLastModified();
-        // saveProjectsData() should be called by the caller
+        markProjectChanged();
         return true;
     }
     return false;
@@ -535,8 +573,7 @@ function updateCardNameData(cardId, newName) {
     // Allow setting name to null (will display ID)
     if (card && card.name !== newName) {
         card.name = newName; // newName can be null or a string
-        updateProjectLastModified();
-        // saveProjectsData() should be called by the caller
+        markProjectChanged();
         return true;
     }
     return false;
@@ -573,8 +610,7 @@ function deleteCardData(cardId) {
         affectedColumns.add(0); // Ensure column 0 is considered for re-render
     }
 
-    updateProjectLastModified();
-    // saveProjectsData() should be called by the caller
+    markProjectChanged();
 
     console.log(`Card data ${cardId} and ${descendantIds.length} descendants deleted.`);
     return { deletedIds: allIdsToDelete, affectedColumns, rootColorsNeedUpdate };
@@ -588,8 +624,7 @@ function addColumnData(doSave = true) {
     projectData.columns.push({ id: `col-${generateId()}`, prompt: '' });
     console.log(`Column data added, new count: ${projectData.columns.length}`);
     if (doSave) {
-         updateProjectLastModified();
-         saveProjectsData();
+         markProjectChanged();
     }
     return newIndex;
 }
@@ -607,8 +642,7 @@ function deleteColumnData(columnIndex) {
 
     if(projectData.columns.length > columnIndex) {
          projectData.columns.splice(columnIndex, 1);
-         updateProjectLastModified();
-         // saveProjectsData() should be called by the caller
+         markProjectChanged();
          console.log(`Column data ${columnIndex} deleted.`);
          return true;
     }
@@ -619,8 +653,7 @@ function setColumnPromptData(columnIndex, newPrompt) {
     const columnData = getColumnData(columnIndex);
     if (columnData && columnData.prompt !== newPrompt) {
         columnData.prompt = newPrompt;
-        updateProjectLastModified();
-        // saveProjectsData() should be called by the caller
+        markProjectChanged();
         return true;
     }
     return false;
@@ -635,7 +668,7 @@ function setGlobalPromptData(newPrompt) {
     const projectData = getActiveProjectData();
     if (projectData && projectData.globalPrompt !== newPrompt) {
         projectData.globalPrompt = newPrompt;
-        updateProjectLastModified();
+        markProjectChanged();
         return true;
     }
     return false;
@@ -752,8 +785,7 @@ function moveCardData(cardId, targetColumnIndex, newParentId, insertBeforeCardId
                                   .filter(idx => idx !== undefined && idx !== null && idx >= 0 && idx < projectData.columns.length)
                                   .sort((a, b) => a - b);
 
-    updateProjectLastModified();
-    // saveProjectsData() should be called by the caller
+    markProjectChanged();
 
     console.log(`Card data ${cardId} moved -> Col ${targetColumnIndex}, Parent: ${newParentId || 'root'}, Order: ${card.order}`);
     return { success: true, affectedColumns: validColumnsToUpdate, rootColorsUpdated: rootColorsNeedUpdate };
@@ -824,8 +856,7 @@ function reparentChildrenData(oldParentId, newParentId) {
         });
     });
 
-    updateProjectLastModified();
-    // saveProjectsData() should be called by the caller
+    markProjectChanged();
 
     const validColumnsToUpdate = Array.from(affectedColumns)
         .filter(idx => idx >= 0 && idx < projectData.columns.length)
@@ -835,27 +866,97 @@ function reparentChildrenData(oldParentId, newParentId) {
     return { success: true, affectedColumns: validColumnsToUpdate };
 }
 
+function splitCardData(cardId, currentContent, splitIndex, asChild = false) {
+    const card = getCard(cardId);
+    if (!card || typeof currentContent !== 'string' || !Number.isInteger(splitIndex)) {
+        return { success: false, reason: 'invalid-split' };
+    }
+
+    const cursor = Math.max(0, Math.min(currentContent.length, splitIndex));
+    const contentBeforeCursor = currentContent.substring(0, cursor);
+    const contentAfterCursor = currentContent.substring(cursor);
+
+    return withProjectTransaction(() => {
+        let targetColumnIndex = card.columnIndex;
+        let parentId = card.parentId;
+        let insertBeforeCardId = null;
+
+        if (asChild) {
+            targetColumnIndex = card.columnIndex + 1;
+            parentId = card.id;
+        } else {
+            const siblings = getSiblingCards(cardId);
+            const currentIndex = siblings.findIndex(sibling => sibling.id === cardId);
+            if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
+                insertBeforeCardId = siblings[currentIndex + 1].id;
+            }
+        }
+
+        updateCardContentData(cardId, contentBeforeCursor);
+        const newCard = addCardData(targetColumnIndex, parentId, contentAfterCursor, insertBeforeCardId);
+        if (!newCard) {
+            updateCardContentData(cardId, currentContent);
+            return { success: false, reason: 'card-create-failed' };
+        }
+
+        return {
+            success: true,
+            newCardId: newCard.id,
+            affectedColumns: [...new Set([card.columnIndex, targetColumnIndex, targetColumnIndex + 1])]
+        };
+    });
+}
+
+function mergeCardData(cardId, direction, currentContent) {
+    const currentCard = getCard(cardId);
+    if (!currentCard || typeof currentContent !== 'string' || !['previous', 'next'].includes(direction)) {
+        return { success: false, reason: 'invalid-merge' };
+    }
+
+    const siblings = getSiblingCards(cardId);
+    const currentIndex = siblings.findIndex(card => card.id === cardId);
+    const adjacentCard = direction === 'previous' ? siblings[currentIndex - 1] : siblings[currentIndex + 1];
+    if (!adjacentCard) return { success: false, reason: 'no-adjacent-sibling' };
+
+    return withProjectTransaction(() => {
+        const survivor = direction === 'previous' ? adjacentCard : currentCard;
+        const removed = direction === 'previous' ? currentCard : adjacentCard;
+        const survivorOriginalContent = direction === 'previous' ? (adjacentCard.content || '') : currentContent;
+        const removedContent = direction === 'previous' ? currentContent : (adjacentCard.content || '');
+        const mergedContent = survivorOriginalContent + removedContent;
+        const cursorPosition = survivorOriginalContent.length;
+        const affectedColumns = new Set([survivor.columnIndex, removed.columnIndex]);
+
+        updateCardContentData(survivor.id, mergedContent);
+        const reparentResult = reparentChildrenData(removed.id, survivor.id);
+        for (const columnIndex of reparentResult.affectedColumns || []) affectedColumns.add(columnIndex);
+        const deleteResult = deleteCardData(removed.id);
+        for (const columnIndex of deleteResult.affectedColumns || []) affectedColumns.add(columnIndex);
+
+        return {
+            success: true,
+            focusCardId: survivor.id,
+            cursorPosition,
+            removedCardId: removed.id,
+            affectedColumns: [...affectedColumns].sort((left, right) => left - right)
+        };
+    });
+}
+
 
 // --- Exports ---
 export {
-    // State (consider exporting getters instead if direct modification is risky)
-    projects,
-    activeProjectId,
     // Constants
     MIN_COLUMNS,
     // Functions
-    generateId,
-    createDefaultProject,
-    validateProjectData,
     addProjectData,
     deleteProjectData,
     switchActiveProject,
-    updateProjectLastModified,
     updateProjectTitle,
+    getProjects,
+    getProject,
+    getActiveProjectId,
     getActiveProjectData,
-    saveProjectsData,
-    saveActiveProjectData,
-    saveActiveProjectId,
     loadProjectsData,
     getCard,
     getColumnData,
@@ -864,6 +965,7 @@ export {
     getSiblingCards,
     getDescendantIds,
     getAncestorIds,
+    getCardContextData,
     getColorForCard,
     addCardData,
     updateCardContentData,
@@ -875,5 +977,6 @@ export {
     getGlobalPromptData,
     setGlobalPromptData,
     moveCardData,
-    reparentChildrenData
+    splitCardData,
+    mergeCardData
 };

@@ -12,6 +12,8 @@ The core data structure is a single JavaScript object named `projects`, which ac
 *   **Active Project Key:** `ACTIVE_PROJECT_ID_KEY` (defaults to `'writingToolActiveProjectId'`)
     *   Stores the `id` (string) of the currently active project.
 
+JSON project exports wrap a project title and data in a versioned envelope. An absent `schemaVersion` is treated as legacy version 1; new exports write `schemaVersion: 1`.
+
 ## Schema Details
 
 Here's the breakdown of the nested data structures:
@@ -75,7 +77,8 @@ Here's the breakdown of the nested data structures:
     ```json
     {
       "columns": [ /* Array of Column Objects */ ],
-      "cards": { /* Dictionary of Card Objects */ }
+      "cards": { /* Dictionary of Card Objects */ },
+      "globalPrompt": ""
     }
     ```
 *   **Properties:**
@@ -88,6 +91,9 @@ Here's the breakdown of the nested data structures:
         *   **Description:** A flattened collection of *all* cards belonging to this project. Using an object keyed by `cardId` allows for efficient lookup of any card regardless of its position or hierarchy.
         *   **Keys:** `cardId` (String) - Unique identifier for each card (e.g., `"card_lz3ywa4b7"`). Generated using `generateId('card_')`.
         *   **Values:** `Card Object` - Contains the data for a single card.
+    *   `globalPrompt`:
+        *   **Type:** `String`
+        *   **Description:** Project-wide guidance included in AI context. Legacy imports default it to an empty string.
 
 ---
 
@@ -98,7 +104,8 @@ Here's the breakdown of the nested data structures:
 *   **Schema:**
     ```json
     {
-      "id": "<columnId>"
+      "id": "<columnId>",
+      "prompt": ""
     }
     ```
 *   **Properties:**
@@ -106,6 +113,9 @@ Here's the breakdown of the nested data structures:
         *   **Type:** `String`
         *   **Description:** A unique identifier for the column instance (e.g., `"col-..."`). While present, the code primarily uses the array *index* (`columnIndex`) for logic related to card placement and column operations.
         *   **Example:** `"col-1jklmno9p"`
+    *   `prompt`:
+        *   **Type:** `String`
+        *   **Description:** Column-specific guidance included in AI context. Legacy imports default it to an empty string.
 
 ---
 
@@ -117,6 +127,7 @@ Here's the breakdown of the nested data structures:
     ```json
     {
       "id": "<cardId>",
+      "name": null,
       "content": "Text content of the card...",
       "parentId": "<parentCardId>" | null,
       "columnIndex": 0, // Integer
@@ -133,11 +144,14 @@ Here's the breakdown of the nested data structures:
         *   **Type:** `String`
         *   **Description:** The user-entered text content for the card. Can be an empty string.
         *   **Example:** `"Chapter 1: The Beginning"`
+    *   `name`:
+        *   **Type:** `String` | `null`
+        *   **Description:** Optional display name. A null value makes the interface display the card ID suffix.
     *   `parentId`:
         *   **Type:** `String` | `null`
         *   **Description:** Defines the hierarchical relationship.
-            *   If `null`, this card is a "root" card within its `columnIndex`.
-            *   If a `String`, it holds the `id` of the parent card. Child cards are typically expected (and rendered) in the column immediately following their parent's column (`child.columnIndex === parent.columnIndex + 1`).
+            *   If `null`, this card is a root card in column 0.
+            *   If a `String`, it holds the `id` of the parent card. A child is in the column immediately following its parent (`child.columnIndex === parent.columnIndex + 1`).
         *   **Example:** `"card_xyz789abc"` or `null`
     *   `columnIndex`:
         *   **Type:** `Number` (Integer)
@@ -149,7 +163,7 @@ Here's the breakdown of the nested data structures:
         *   **Example:** `0`, `1`, `1.5`, `2`
     *   `color`:
         *   **Type:** `String`
-        *   **Description:** An HSL color string (e.g., `"hsl(H, S%, L%)"`) calculated based on the card's position in the hierarchy (root index for root cards, depth/parent color for child cards). This is technically *derived* data, cached on the card object for rendering performance. It's recalculated on load (`loadProjectsData`) and potentially during moves/adds (`getColorForCard`, `moveCard`).
+        *   **Description:** An HSL color string calculated from hierarchy and sibling position. It is derived cache data: imports do not trust it, and rendering or project mutations recalculate it.
         *   **Example:** `"hsl(230, 65%, 85%)"`
 
 ---

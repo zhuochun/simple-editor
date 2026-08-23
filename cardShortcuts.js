@@ -41,55 +41,19 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (ctrlPressed) {
                 event.preventDefault();
                 console.log(`Shortcut: Ctrl+Enter (Split Below) on card ${cardId}`);
-                const currentCardData = helpers.getCard(cardId);
-                if (!currentCardData) return;
-
-                const selectionStart = textarea.selectionStart;
-                const textBeforeCursor = textarea.value.substring(0, selectionStart);
-                const textAfterCursor = textarea.value.substring(selectionStart);
-
-                // Update current card content (assuming helper exists)
-                helpers.updateCardContent(cardId, textBeforeCursor);
-                // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
-
-                // Find next sibling to insert before
-                let insertBeforeCardId = null;
-                let siblings;
-                if (currentCardData.parentId) {
-                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                } else {
-                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                }
-                const currentIndex = siblings.findIndex(c => c.id === cardId);
-                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                    insertBeforeCardId = siblings[currentIndex + 1].id;
-                }
-
-                // Add new card below with the remaining text
-                const newCardId = helpers.addCard(currentCardData.columnIndex, currentCardData.parentId, textAfterCursor, insertBeforeCardId);
-                // Explicitly focus the new card
-                if (newCardId) {
-                    helpers.focusCardTextarea(newCardId, 'start');
+                const result = helpers.splitCard(cardId, textarea.value, textarea.selectionStart, false);
+                if (result.success) {
+                    helpers.focusCardTextarea(result.newCardId, 'start');
                 }
             }
             // === Alt+Enter: Split Card as Child ===
             else if (altPressed) {
                 event.preventDefault();
                 console.log(`Shortcut: Alt+Enter (Split Child) on card ${cardId}`);
-                const currentCardData = helpers.getCard(cardId);
-                if (!currentCardData) return;
-
-                const selectionStart = textarea.selectionStart;
-                const textBeforeCursor = textarea.value.substring(0, selectionStart);
-                const textAfterCursor = textarea.value.substring(selectionStart);
-
-                // Update current card content (assuming helper exists)
-                helpers.updateCardContent(cardId, textBeforeCursor);
-                // If helper doesn't exist, might need: textarea.value = textBeforeCursor; // followed by data update trigger
-
-                const targetColumnIndex = currentCardData.columnIndex + 1;
-                // Add new card as child with the remaining text (focus/scroll is handled by addCard)
-                helpers.addCard(targetColumnIndex, cardId, textAfterCursor);
+                const result = helpers.splitCard(cardId, textarea.value, textarea.selectionStart, true);
+                if (result.success) {
+                    helpers.focusCardTextarea(result.newCardId, 'start');
+                }
             }
             break;
 
@@ -244,38 +208,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (!ctrlPressed && !altPressed && textarea.selectionStart === 0 && textarea.selectionEnd === 0) {
                 event.preventDefault();
                 console.log(`Shortcut: Backspace (start) on card ${cardId}`);
-                const currentCardData = helpers.getCard(cardId);
-                if (!currentCardData) return;
-
-                let siblings;
-                let currentIndex;
-                if (currentCardData.parentId) {
-                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                } else {
-                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                }
-                currentIndex = siblings.findIndex(c => c.id === cardId);
-
-                if (currentIndex > 0) {
-                    const prevCardId = siblings[currentIndex - 1].id;
-                    const prevCardData = helpers.getCard(prevCardId);
-                    if (!prevCardData) return;
-
-                    const currentContent = textarea.value;
-                    const prevContent = prevCardData.content || ''; // Handle potentially undefined content
-                    const mergedContent = prevContent + currentContent;
-                    // Position cursor at the point of merge in the previous card
-                    const newCursorPos = prevContent.length;
-
-                    // 1. Update previous card content
-                    helpers.updateCardContent(prevCardId, mergedContent);
-                    // 2. Reparent children of current card to previous card
-                    helpers.reparentChildren(cardId, prevCardId);
-                    // 3. Delete *only* the current card (data and DOM)
-                    helpers.deleteCardInternal(cardId); // Use internal delete
-                    // 4. Focus previous card at the merge point
-                    helpers.focusCardTextarea(prevCardId, newCursorPos);
-                    // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
+                const result = helpers.mergeCard(cardId, 'previous', textarea.value);
+                if (result.success) {
+                    helpers.focusCardTextarea(result.focusCardId, result.cursorPosition);
                 }
             }
             break;
@@ -285,37 +220,9 @@ export function handleCardTextareaKeydown(event, helpers) {
             if (!ctrlPressed && !altPressed && textarea.selectionStart === textarea.value.length && textarea.selectionEnd === textarea.value.length) {
                 event.preventDefault();
                 console.log(`Shortcut: Delete (end) on card ${cardId}`);
-                const currentCardData = helpers.getCard(cardId);
-                if (!currentCardData) return;
-
-                let siblings;
-                let currentIndex;
-                if (currentCardData.parentId) {
-                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                } else {
-                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                }
-                currentIndex = siblings.findIndex(c => c.id === cardId);
-
-                if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
-                    const nextCardId = siblings[currentIndex + 1].id;
-                    const nextCardData = helpers.getCard(nextCardId);
-                    if (!nextCardData) return;
-
-                    const currentContent = textarea.value;
-                    const nextContent = nextCardData.content || ''; // Handle potentially undefined content
-                    const mergedContent = currentContent + nextContent;
-                    const currentCursorPos = currentContent.length; // Cursor stays at the end of the original content
-
-                    // 1. Update current card content
-                    helpers.updateCardContent(cardId, mergedContent);
-                    // 2. Reparent children of next card to current card
-                    helpers.reparentChildren(nextCardId, cardId);
-                    // 3. Delete *only* the next card (data and DOM)
-                    helpers.deleteCardInternal(nextCardId); // Use internal delete
-                    // 4. Focus current card at the merge point
-                    helpers.focusCardTextarea(cardId, currentCursorPos);
-                    // Re-rendering is handled by reparentChildren and deleteCardInternal indirectly
+                const result = helpers.mergeCard(cardId, 'next', textarea.value);
+                if (result.success) {
+                    helpers.focusCardTextarea(result.focusCardId, result.cursorPosition);
                 }
             }
             break;
