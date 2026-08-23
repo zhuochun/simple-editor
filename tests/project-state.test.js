@@ -40,6 +40,18 @@ test('project mutations persist under the state owner', async () => {
     assert.equal(Object.values(storedActive.data.cards)[0].content, 'Persisted card');
 });
 
+test('adding a column always persists through the public command', async () => {
+    const { data, storage } = await loadDataModule('add-column');
+    const columnsBefore = data.getActiveProjectData().columns.length;
+    const writesBefore = storage.writeCount;
+
+    const newColumnIndex = data.addColumnData(false);
+
+    assert.equal(newColumnIndex, columnsBefore);
+    assert.equal(data.getActiveProjectData().columns.length, columnsBefore + 1);
+    assert.equal(storage.writeCount, writesBefore + 1);
+});
+
 test('split sibling is one atomic project command', async () => {
     const { data, storage } = await loadDataModule('split');
     const original = data.addCardData(0, null, 'AlphaBeta');

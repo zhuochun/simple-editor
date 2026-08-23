@@ -549,7 +549,7 @@ function addCardData(columnIndex, parentId = null, initialContent = '', insertBe
 
     // Ensure column exists in data
     while (projectData.columns.length <= columnIndex) {
-         addColumnData(false); // Add column data without saving yet
+         appendColumnData();
     }
 
     markProjectChanged();
@@ -616,14 +616,19 @@ function deleteCardData(cardId) {
     return { deletedIds: allIdsToDelete, affectedColumns, rootColorsNeedUpdate };
 }
 
-function addColumnData(doSave = true) {
+function appendColumnData() {
     const projectData = getActiveProjectData();
     if (!projectData) return -1;
 
     const newIndex = projectData.columns.length;
     projectData.columns.push({ id: `col-${generateId()}`, prompt: '' });
     console.log(`Column data added, new count: ${projectData.columns.length}`);
-    if (doSave) {
+    return newIndex;
+}
+
+function addColumnData() {
+    const newIndex = appendColumnData();
+    if (newIndex !== -1) {
          markProjectChanged();
     }
     return newIndex;
@@ -755,7 +760,7 @@ function moveCardData(cardId, targetColumnIndex, newParentId, insertBeforeCardId
 
     // Ensure enough columns exist in data
     while (projectData.columns.length <= maxDescendantCol) {
-         addColumnData(false); // Add column data without saving
+         appendColumnData();
     }
 
     // Determine Columns affected for potential re-render

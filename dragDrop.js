@@ -12,7 +12,6 @@ const CSS_CLASSES = {
 let draggedCardId = null;
 let draggedElement = null; // Store the element being dragged
 let dragIndicator = null;
-let scrollIntervalId = null; // To store the interval ID for scrolling
 let currentScrollContainer = null; // Track the container being scrolled
 let scrollAnimationFrameId = null; // Track the requestAnimationFrame ID
 
@@ -22,12 +21,12 @@ const SCROLL_TRIGGER_ZONE_HEIGHT = 50; // Pixels from top/bottom edge to trigger
 const TOUCH_DRAG_THRESHOLD = 8; // Allow taps and minor finger movement before starting a drag
 
 // --- DOM Helpers (to be passed in) ---
-let getCardElement = (id) => null;
-let getColumnIndex = (el) => -1;
+let getCardElement = () => null;
+let getColumnIndex = () => -1;
 
 // --- Data Helpers (to be passed in) ---
-let getCardData = (id) => null;
-let moveCardData = (cardId, targetColumnIndex, newParentId, insertBeforeCardId) => ({ success: false });
+let getCardData = () => null;
+let moveCardData = () => ({ success: false });
 
 // --- Drag Indicator Management ---
 function ensureDragIndicator() {
@@ -260,7 +259,7 @@ function handleDragStart(event) {
     console.log(`handleDragStart End: draggedCardId = ${draggedCardId}, draggedElement =`, draggedElement);
 }
 
-function handleDragEnd(event) {
+function handleDragEnd() {
     console.log("handleDragEnd called");
     console.log(`handleDragEnd Start: draggedCardId = ${draggedCardId}, draggedElement =`, draggedElement);
 
@@ -437,25 +436,7 @@ function handleDragOver(event) {
 function handleDragEnter(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (!draggedCardId) return; // Ignore if not dragging
-
-    const targetGroup = event.target.closest('.card-group');
-    const targetCardsContainer = event.target.closest('.cards-container');
-    const targetCard = event.target.closest('.card');
-
-    // Don't highlight self or own group
-    if (targetCard && targetCard.dataset.cardId === draggedCardId) return;
-    if (targetGroup && targetGroup.dataset.parentId === draggedCardId) return;
-
-    // Add highlight class to the direct target container
-     // Removed class additions here. handleDragOver is now solely responsible
-     // for adding the appropriate drag-over classes (.drag-over-parent,
-     // .drag-over-group, .drag-over-empty) based on the precise hover target.
-     // This prevents potential conflicts between handleDragEnter and handleDragOver.
-     // if (targetGroup) targetGroup.classList.add(CSS_CLASSES.OVER_GROUP);
-     // else if (targetCardsContainer) targetCardsContainer.classList.add(CSS_CLASSES.OVER_EMPTY);
-     // else if (targetCard) targetCard.classList.add(CSS_CLASSES.OVER_CARD); // Avoids conflict with OVER_PARENT
-  }
+}
 
   function handleDragLeave(event) {
      event.stopPropagation();
@@ -463,7 +444,6 @@ function handleDragEnter(event) {
 
     const relatedTarget = event.relatedTarget; // Element being entered
     const currentTarget = event.currentTarget; // Element being left
-    const leavingValidTarget = currentTarget.matches('.card, .card-group, .cards-container');
 
     // Let handleDragOver manage clearing/setting hover styles as the cursor moves.
     // Let handleDragEnd / handleDrop handle the final cleanup.
@@ -626,22 +606,7 @@ function handleDrop(event) {
 
     console.log(`Drop details: Card ${droppedCardId} -> Col ${targetColumnIndex}, Parent ${newParentId || 'root'}, Before ${insertBeforeCardId || 'end'}`);
 
-    // moveCardData should handle all data updates (order, parent, column, descendants, colors)
-    // It should return information needed for the UI layer to re-render efficiently.
-    const moveResult = moveCardData(droppedCardId, targetColumnIndex, newParentId, insertBeforeCardId);
-
-     // --- Trigger UI Update (Responsibility of script.js) ---
-     // The main script will need to observe the result of moveCardData
-     // and call render functions for the affected columns.
-     // Example (pseudo-code, actual call happens in script.js):
-    // if (moveResult.success) {
-    //     renderAffectedColumns(moveResult.affectedColumns);
-    //     if (moveResult.rootColorsUpdated) {
-    //         renderColumn(0); // Ensure root column is re-rendered if colors changed
-    //     }
-    //     updateAllToolbarButtons();
-    //     saveProjectsData(); // Save after successful move and render
-    // }
+    moveCardData(droppedCardId, targetColumnIndex, newParentId, insertBeforeCardId);
 
     clearDragStyles(true); // Clean up UI; dragend owns the remaining drag state
 }
