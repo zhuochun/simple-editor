@@ -2,6 +2,7 @@ import * as data from './data.js';
 import { initializeDragDrop } from './dragDrop.js';
 import { aiService } from './aiService.js';
 import { handleCardTextareaKeydown } from './cardShortcuts.js'; // Import the handler
+import { createProjectExport, parseProjectExport, projectToPlainText } from './projectFormat.js';
 
 document.addEventListener('DOMContentLoaded', () => {
     // --- DOM Elements ---
@@ -429,11 +430,11 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="card-header" draggable="true">
                 <span class="card-name-display" title="${displayName}">${truncatedDisplayName}</span>
                 <div class="card-ai-actions ai-feature">
-                     <button class="ai-continue-btn" title="Continue Writing (in this column)" ${!aiReady ? 'disabled' : ''}>⬇️</button>
-                      <button class="ai-expand-btn" title="Expand (to next column)" ${!aiReady ? 'disabled' : ''}>↕️</button>
-                      <button class="ai-summarize-btn" title="Reduce (in this column)" ${!aiReady ? 'disabled' : ''}>⏪</button>
-                      <button class="ai-breakdown-btn" title="Brainstorm (to next column)" ${!aiReady ? 'disabled' : ''}>🧠</button>
-                      <button class="ai-custom-btn" title="Custom Prompt (to next column)" ${!aiReady ? 'disabled' : ''}>✨</button>
+                     <button class="ai-continue-btn" title="Continue as next sibling" ${!aiReady ? 'disabled' : ''}>⬇️</button>
+                      <button class="ai-expand-btn" title="Elaborate as child" ${!aiReady ? 'disabled' : ''}>↕️</button>
+                      <button class="ai-summarize-btn" title="Create summary after card" ${!aiReady ? 'disabled' : ''}>⏪</button>
+                      <button class="ai-breakdown-btn" title="Brainstorm as children" ${!aiReady ? 'disabled' : ''}>🧠</button>
+                      <button class="ai-custom-btn" title="Custom response as children" ${!aiReady ? 'disabled' : ''}>✨</button>
                  </div>
                  <div class="card-actions">
                      <button class="add-child-btn" title="Add Child Card (to next column)">➕</button>
@@ -679,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // After all columns are created and potentially rendered, update all toolbar buttons
         // across all columns to ensure correct states (e.g., enable/disable delete/add column).
         updateAllToolbarButtons();
-        console.log(`App rendered for project: ${data.projects[data.activeProjectId]?.title}`);
+        console.log(`App rendered for project: ${data.getProject(data.getActiveProjectId())?.title}`);
     }
 
     function updateToolbarButtons(columnEl, columnIndex) {
@@ -726,13 +727,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderProjectList() {
         projectListContainer.innerHTML = '';
-        const sortedProjects = Object.values(data.projects).sort((a, b) => b.lastModified - a.lastModified);
+        const sortedProjects = data.getProjects().sort((a, b) => b.lastModified - a.lastModified);
 
         sortedProjects.forEach(project => {
             const item = document.createElement('div');
             item.className = 'project-item';
             item.dataset.projectId = project.id;
-            if (project.id === data.activeProjectId) { // Use data state
+            if (project.id === data.getActiveProjectId()) {
                 item.classList.add('active');
             }
 
@@ -768,7 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
      function makeProjectTitleEditable(projectId, projectItemElement) {
         const titleSpan = projectItemElement.querySelector('.project-title');
-        const currentTitle = data.projects[projectId].title; // Use data state
+        const currentTitle = data.getProject(projectId).title;
         const input = document.createElement('input');
         input.type = 'text';
         input.value = currentTitle;
@@ -784,7 +785,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (saveChanges && newTitle && newTitle !== currentTitle) {
                 // Call data function to update title and lastModified
                 if (data.updateProjectTitle(projectId, newTitle)) {
-                    data.saveProjectsData(); // Save changes
                     titleSpan.textContent = newTitle;
                     titleSpan.title = newTitle;
                     updated = true;
@@ -813,30 +813,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (title === null) return;
 
         const newProject = data.addProjectData(title); // Use data function
-        data.saveProjectsData(); // Save the new project list
         handleSwitchProject(newProject.id); // Switch to the new project
         // renderProjectList() will be called by handleSwitchProject's renderApp
     }
 
     function handleDeleteProject(projectIdToDelete) {
-        const projectTitle = data.projects[projectIdToDelete]?.title;
+        const projectTitle = data.getProject(projectIdToDelete)?.title;
         if (!projectTitle) return;
 
         if (!confirm(`Are you sure you want to delete the project "${projectTitle}" and all its content? This cannot be undone.`)) {
             return;
         }
 
-        const originalActiveId = data.activeProjectId; // Store the ID *before* deletion
+        const originalActiveId = data.getActiveProjectId(); // Store the ID *before* deletion
         const deleteResult = data.deleteProjectData(projectIdToDelete); // Use data function
 
         if (deleteResult.deleted) {
-            data.saveProjectsData(); // Save the deletion
-            data.saveActiveProjectId(); // Save the potentially new active ID
 
             // Check if the *original* active project was the one deleted
             if (originalActiveId === projectIdToDelete) {
                  // Active project *was* deleted, load the new one
-                 console.log(`Active project ${projectIdToDelete} deleted. Rendering new active project: ${data.activeProjectId}`);
+                 console.log(`Active project ${projectIdToDelete} deleted. Rendering new active project: ${data.getActiveProjectId()}`);
                  renderApp(); // Render the new active project
                  renderProjectList(); // Update sidebar highlighting and active state
             } else {
@@ -849,55 +846,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleSwitchProject(newProjectId) {
         if (data.switchActiveProject(newProjectId)) { // Use data function
-            data.saveActiveProjectId(); // Persist the choice
             renderApp(); // Render the new project
             renderProjectList(); // Update sidebar highlighting
-            console.log(`Switched to project: ${data.projects[data.activeProjectId].title} (${data.activeProjectId})`);
+            const activeProject = data.getProject(data.getActiveProjectId());
+            console.log(`Switched to project: ${activeProject.title} (${activeProject.id})`);
         }
     }
 
     // --- Export Functions ---
 
     function exportProjectAsText(projectId) {
-        const project = data.projects[projectId];
+        const project = data.getProject(projectId);
         if (!project) return;
-
-        let content = '';
-        const projectData = project.data; // Use specific project's data
-
-        // Need temporary local versions of traversal helpers using specific project data
-        const getCardLocal = (id) => projectData.cards[id];
-        const getChildCardsLocal = (parentId, targetColumnIndex = null) => {
-            let children = Object.values(projectData.cards).filter(card => card.parentId === parentId);
-            if (targetColumnIndex !== null) {
-                children = children.filter(card => card.columnIndex === targetColumnIndex);
-            }
-            return children.sort((a, b) => a.order - b.order);
-        };
-        const getColumnCardsLocal = (columnIndex) => {
-             return Object.values(projectData.cards)
-                    .filter(card => card.columnIndex === columnIndex && !card.parentId) // Only root cards
-                    .sort((a, b) => a.order - b.order);
-        };
-
-        function traverse(cardId) {
-            const card = getCardLocal(cardId);
-            if (!card) return;
-
-            const cardContent = card.content?.trim();
-            if (cardContent) {
-                content += cardContent + '\n\n';
-            }
-
-            const children = getChildCardsLocal(cardId, card.columnIndex + 1);
-            children.forEach(child => traverse(child.id));
-        }
-
-        const rootCards = getColumnCardsLocal(0);
-        rootCards.forEach(rootCard => traverse(rootCard.id));
+        const content = projectToPlainText(project);
 
         // File download logic
-        const blob = new Blob([content.trim()], { type: 'text/plain;charset=utf-8' });
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
         // Use UTC for timestamp consistency, replace invalid chars
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const filename = `ProjectExport_${project.title.replace(/[^a-zA-Z0-9_-]/g, '_')}_${timestamp}.txt`;
@@ -912,17 +876,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function exportProjectAsJson(projectId) {
-        const project = data.projects[projectId];
+        const project = data.getProject(projectId);
         if (!project) return;
 
-        // Create an object containing both title and data for export
-        const projectExportObject = {
-            title: project.title, // Include the project title
-            data: project.data    // Include the existing data structure
-        };
-
         try {
-            const jsonContent = JSON.stringify(projectExportObject, null, 2); // Pretty print JSON
+            const jsonContent = JSON.stringify(createProjectExport(project), null, 2);
             const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8' });
             // Use UTC for timestamp consistency, replace invalid chars
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -998,39 +956,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Import Functions ---
 
     async function processImportedData(jsonDataString, sourceDescription) {
-        let success = false; // Track success
-        try {
-            const importedFullObject = JSON.parse(jsonDataString);
-
-            // Extract title and the actual project data object
-            const newTitle = importedFullObject.title || "Imported Project"; // Get title from root
-            const importedProjectData = importedFullObject.data; // Get the data part
-
-            // Validate the nested 'data' object
-            if (!importedProjectData || !data.validateProjectData(importedProjectData)) {
-                alert(`Import failed: Invalid or missing project data structure within the JSON from ${sourceDescription}.`);
-                return;
-            }
-
-            // Add the project using addProjectData, passing the extracted project data
-            // addProjectData will generate a new ID and handle saving
-            const newProject = data.addProjectData(newTitle, importedProjectData); // Pass only the data part
-
-            if (newProject) {
-                data.saveProjectsData(); // Save the updated projects list
-                handleSwitchProject(newProject.id); // Switch to the newly imported project
-                console.log(`Imported project ${newProject.id} from ${sourceDescription}`);
-            } else {
-                alert(`Import failed: Could not add the project data from ${sourceDescription}.`);
-            }
-            success = true; // Mark as successful if project was added
-
-        } catch (error) {
-            console.error(`Error processing imported data from ${sourceDescription}:`, error);
-            alert(`Import failed: Could not parse JSON data from ${sourceDescription}. Error: ${error.message}`);
-            success = false; // Mark as failed on error
+        const parsed = parseProjectExport(jsonDataString);
+        if (!parsed.ok) {
+            console.error(`Import rejected from ${sourceDescription}:`, parsed.error);
+            alert(`Import failed from ${sourceDescription}: ${parsed.error.message}`);
+            return false;
         }
-        return success; // Return success status
+
+        const newProject = data.addProjectData(parsed.value.title, parsed.value.data);
+        handleSwitchProject(newProject.id);
+        console.log(`Imported project ${newProject.id} from ${sourceDescription}`);
+        return true;
     }
 
 
@@ -1205,7 +1141,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  renderApp(); // Fallback
             }
 
-            data.saveProjectsData(); // Save after data and DOM updates
 
             requestAnimationFrame(() => {
                 const textarea = newCardEl.querySelector('.card-content');
@@ -1241,7 +1176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const numDescendantsWithContent = descendantIds.filter(id => projectData.cards[id]?.content?.trim()).length;
         const hasContent = card.content?.trim() !== '';
         const shouldConfirm = numDescendantsWithContent > 0 || (hasContent && descendantIds.length > 0);
-        const confirmMessage = `Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${descendantIds.length} descendant(s) (${numDescendantsWithContent} with content) from project "${data.projects[data.activeProjectId].title}"?`;
+        const confirmMessage = `Delete card #${cardId.slice(-4)} ${hasContent ? 'with content ' : ''}and its ${descendantIds.length} descendant(s) (${numDescendantsWithContent} with content) from project "${data.getProject(data.getActiveProjectId()).title}"?`;
 
         if (isAiActionInProgress) {
             alert("Please wait for the current AI action to complete before deleting cards.");
@@ -1295,7 +1230,6 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             updateAllToolbarButtons();
-            data.saveProjectsData(); // Save changes
             console.log(`Card ${cardId} and descendants deleted.`);
 
             // --- Scroll to adjacent card or parent using scrollHierarchy ---
@@ -1322,7 +1256,6 @@ document.addEventListener('DOMContentLoaded', () => {
          updateAllToolbarButtons();
          columnsContainer.scrollLeft = columnsContainer.scrollWidth;
 
-         data.saveProjectsData(); // Save after DOM update
          console.log(`Column ${newIndex} added visually.`);
     }
 
@@ -1331,7 +1264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert("Please wait for the current AI action to complete before deleting columns.");
             return;
         }
-        const projectTitle = data.projects[data.activeProjectId]?.title;
+        const projectTitle = data.getProject(data.getActiveProjectId())?.title;
         // Confirmation uses data layer checks via deleteColumnData
          if (!confirm(`Delete this empty column from project "${projectTitle}"?`)) return;
 
@@ -1344,7 +1277,6 @@ document.addEventListener('DOMContentLoaded', () => {
                   renderApp(); // Failsafe
              }
              updateAllToolbarButtons();
-             data.saveProjectsData(); // Save deletion
              console.log(`Column ${columnIndex} deleted.`);
          } else {
               alert("Cannot delete this column. It might not be the rightmost, the minimum number of columns hasn't been exceeded, or it's not empty.");
@@ -1369,7 +1301,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  const newPrompt = promptInput.value.trim();
                  // Use data function to update
                  if (data.setColumnPromptData(columnIndex, newPrompt)) {
-                     data.saveProjectsData(); // Save if changed
                      // Update button indicator
                      const columnEl = getColumnElementByIndex(columnIndex);
                      if (columnEl) updateToolbarButtons(columnEl, columnIndex);
@@ -1392,7 +1323,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const promptInput = modalElement.querySelector('#modal-global-prompt-input');
                 const newPrompt = promptInput.value.trim();
                 if (data.setGlobalPromptData(newPrompt)) {
-                    data.saveProjectsData();
                     const colEl = getColumnElementByIndex(0);
                     if (colEl) updateToolbarButtons(colEl, 0);
                     console.log('Global prompt updated.');
@@ -1416,7 +1346,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const updated = data.updateCardContentData(cardId, textarea.value);
 
         if (updated) {
-            data.saveProjectsData(); // Save if content changed
             console.log(`Card ${cardId} content saved.`);
             // Update the group header display for this card (if it acts as a parent)
             updateGroupHeaderDisplay(cardId);
@@ -1469,7 +1398,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (saveChanges) {
                 // Update data via data function
                 if (data.updateCardNameData(cardId, newName)) {
-                    data.saveProjectsData(); // Save if changed
                     nameChanged = true;
                     console.log(`Card ${cardId} name updated to "${newName}".`);
                 }
@@ -1557,7 +1485,6 @@ document.addEventListener('DOMContentLoaded', () => {
          }
 
          // --- Final Steps ---
-         data.saveProjectsData(); // Save all changes.
          // Update the group header display for the *original* parent card.
          updateGroupHeaderDisplay(parentIdForNewCards); // Use parentIdForNewCards (which is originalCardId for breakdown/custom)
          console.log(`AI Multi-Part processing completed for original card ${originalCardId}. Last created/updated card: ${lastCardId}`);
@@ -1615,6 +1542,11 @@ document.addEventListener('DOMContentLoaded', () => {
              alert(`Card #${cardId.slice(-4)} has no content for this action.`);
              return;
          }
+         const projectContext = data.getCardContextData(cardId);
+         if (!projectContext) {
+             console.error(`executeAiAction: Context not found for card ${cardId}`);
+             return;
+         }
 
          // 2. --- Lock UI ---
          disableConflictingActions();
@@ -1635,15 +1567,14 @@ document.addEventListener('DOMContentLoaded', () => {
              console.error(`executeAiAction: Could not find textarea for placeholder card ${placeholderCardId}`);
              // Attempt to clean up data if UI element is missing
              data.updateCardContentData(placeholderCardId, "Error: Could not find card textarea.");
-             data.saveProjectsData();
              enableConflictingActions(); // Unlock UI
              return;
          }
 
          // 4. --- Call AI Service ---
          try {
-             const aiServiceArgs = {
-                 card: card, // Always pass the original card context
+              const aiServiceArgs = {
+                  context: projectContext,
                  onChunk: (delta) => {
                      if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) {
                          placeholderTextarea.value = ''; // Clear placeholder on first chunk
@@ -1657,7 +1588,6 @@ document.addEventListener('DOMContentLoaded', () => {
                      placeholderTextarea.classList.remove('ai-loading');
                      // Update data model with error and save
                      data.updateCardContentData(placeholderCardId, placeholderTextarea.value);
-                     data.saveProjectsData();
                      enableConflictingActions(); // Unlock UI on error
                  },
                  onDone: (finalContent) => {
@@ -1669,7 +1599,6 @@ document.addEventListener('DOMContentLoaded', () => {
                      } else {
                          // Default handling for single-card output
                          if (data.updateCardContentData(placeholderCardId, finalContent)) {
-                             data.saveProjectsData(); // Save the final content
                              updateGroupHeaderDisplay(placeholderCardId); // Update header if it's a parent
                          }
                          console.log(`AI Action (${aiServiceMethodName}) completed. New card: ${placeholderCardId}`);
@@ -1698,7 +1627,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  placeholderTextarea.value = `Error during AI call setup: ${error.message}`;
                  placeholderTextarea.classList.remove('ai-loading');
                  data.updateCardContentData(placeholderCardId, placeholderTextarea.value);
-                 data.saveProjectsData();
              }
              enableConflictingActions(); // Ensure UI is unlocked even if setup fails
          }
@@ -1908,7 +1836,6 @@ document.addEventListener('DOMContentLoaded', () => {
                      }
 
                      updateAllToolbarButtons();
-                     data.saveProjectsData(); // Save after successful move and render
                  } else {
                     console.error("Card move failed:", moveResult.reason);
                     // Optionally provide user feedback
@@ -1940,64 +1867,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // 6. Setup Keyboard Shortcuts
+        const renderShortcutMutation = (result) => {
+            if (!result.success) return result;
+            const affectedColumns = result.affectedColumns || [];
+            const needsFullRender = affectedColumns.some(index => index >= columnsContainer.children.length);
+            if (needsFullRender) {
+                renderApp();
+            } else {
+                affectedColumns.forEach(index => {
+                    const columnEl = getColumnElementByIndex(index);
+                    if (columnEl) renderColumnContent(columnEl, index);
+                });
+                updateAllToolbarButtons();
+            }
+            return result;
+        };
         const shortcutHelpers = {
-            // Provide necessary functions from data and script modules
             getCard: data.getCard,
-            addCard: handleAddCard, // Use the UI handler
-            deleteCard: handleDeleteCard, // Use the UI handler for standard delete
-            // For merge/split shortcuts, use wrappers that handle re-rendering
-            deleteCardInternal: (cardId) => {
-                 const result = data.deleteCardData(cardId); // Call data function
-                 if (result.deletedIds.length > 0) {
-                     // Remove elements immediately for responsiveness
-                     result.deletedIds.forEach(id => {
-                         getCardElement(id)?.remove();
-                         getGroupElement(id)?.remove();
-                     });
-                     // Re-render affected columns after data update
-                     result.affectedColumns.forEach(index => {
-                         const colEl = getColumnElementByIndex(index);
-                         if (colEl) renderColumnContent(colEl, index);
-                     });
-                     updateAllToolbarButtons(); // Update toolbars
-                     data.saveProjectsData(); // Save changes
-                 }
-                 return result; // Return result for shortcut logic
-            },
-            reparentChildren: (oldP, newP) => {
-                 const result = data.reparentChildrenData(oldP, newP); // Call data function
-                 if (result.success) {
-                     // Re-render affected columns after data update
-                     result.affectedColumns.forEach(index => {
-                         const colEl = getColumnElementByIndex(index);
-                         if (colEl) renderColumnContent(colEl, index);
-                     });
-                     updateAllToolbarButtons(); // Update toolbars
-                     data.saveProjectsData(); // Save changes
-                 }
-                 return result; // Return result for shortcut logic
-            },
-            focusCardTextarea: focusCardTextarea, // UI helper
-            getCardElement: getCardElement, // UI helper
-            getColumnCards: data.getColumnCards, // Data helper
-            getChildCards: data.getChildCards, // Data helper
-            getSiblingCards: data.getSiblingCards, // Data helper
-            updateCardContent: (cardId, newContent) => { // Wrapper for update data + save
-                if (data.updateCardContentData(cardId, newContent)) {
-                    data.saveProjectsData();
-                    // Update textarea value directly for immediate feedback
-                    const cardEl = getCardElement(cardId);
-                    const textarea = cardEl?.querySelector('textarea.card-content');
-                    if (textarea) {
-                        textarea.value = newContent;
-                        autoResizeTextarea({ target: textarea });
-                    }
-                    // Update group header display after content update
-                    updateGroupHeaderDisplay(cardId);
-                }
-            },
-            renderColumnContent: renderColumnContent, // UI helper for re-rendering after merge/split
-            getColumnElementByIndex: getColumnElementByIndex // UI helper
+            getColumnCards: data.getColumnCards,
+            getChildCards: data.getChildCards,
+            splitCard: (cardId, content, cursor, asChild) =>
+                renderShortcutMutation(data.splitCardData(cardId, content, cursor, asChild)),
+            mergeCard: (cardId, direction, content) =>
+                renderShortcutMutation(data.mergeCardData(cardId, direction, content)),
+            focusCardTextarea
         };
 
         // Attach the single keydown listener using event delegation
