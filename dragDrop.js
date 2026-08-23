@@ -19,6 +19,7 @@ let scrollAnimationFrameId = null; // Track the requestAnimationFrame ID
 // --- Constants ---
 const SCROLL_SPEED = 10; // Pixels per frame
 const SCROLL_TRIGGER_ZONE_HEIGHT = 50; // Pixels from top/bottom edge to trigger scroll
+const TOUCH_DRAG_THRESHOLD = 8; // Allow taps and minor finger movement before starting a drag
 
 // --- DOM Helpers (to be passed in) ---
 let getCardElement = (id) => null;
@@ -105,38 +106,115 @@ function startScrolling(container, direction) {
 function attachTouchDragSupport(container) {
     let touchDataTransfer = null;
     let touchDragTarget = null;
+    let touchStartTarget = null;
+    let activeTouchId = null;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchDragging = false;
+
+    const createTouchDataTransfer = () => {
+        const data = new Map();
+        return {
+            effectAllowed: 'none',
+            dropEffect: 'none',
+            setData(type, value) { data.set(type, String(value)); },
+            getData(type) { return data.get(type) || ''; }
+        };
+    };
+
+    const findTouch = (touches) => Array.from(touches)
+        .find(touch => touch.identifier === activeTouchId);
+
+    const resetTouchState = () => {
+        touchDataTransfer = null;
+        touchDragTarget = null;
+        touchStartTarget = null;
+        activeTouchId = null;
+        touchDragging = false;
+    };
+
+    const cancelTouchDrag = () => {
+        if (touchDragging) {
+            handleDragEnd({ target: touchDragTarget });
+        }
+        resetTouchState();
+    };
 
     container.addEventListener('touchstart', (e) => {
+        if (activeTouchId !== null || e.touches.length !== 1) return;
+        if (e.target.closest('button, input, textarea, select, a')) return;
+
         const header = e.target.closest('.card-header');
         if (!header) return;
-        e.preventDefault();
+
+        const touch = e.changedTouches[0];
         touchDragTarget = header;
-        touchDataTransfer = new DataTransfer();
-        handleDragStart({ target: header, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+        touchStartTarget = e.target;
+        activeTouchId = touch.identifier;
+        touchStartX = touch.clientX;
+        touchStartY = touch.clientY;
+        touchDataTransfer = createTouchDataTransfer();
     }, { passive: false });
 
     container.addEventListener('touchmove', (e) => {
         if (!touchDataTransfer) return;
+
+        const touch = findTouch(e.touches);
+        if (!touch) {
+            cancelTouchDrag();
+            return;
+        }
+
+        if (!touchDragging) {
+            const distance = Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY);
+            if (distance < TOUCH_DRAG_THRESHOLD) return;
+
+            handleDragStart({
+                target: touchStartTarget,
+                dataTransfer: touchDataTransfer,
+                preventDefault: () => {}
+            });
+            touchDragging = Boolean(draggedCardId);
+            if (!touchDragging) {
+                resetTouchState();
+                return;
+            }
+        }
+
         e.preventDefault();
-        const t = e.touches[0];
-        const el = document.elementFromPoint(t.clientX, t.clientY);
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
         if (el) {
-            handleDragOver({ target: el, clientX: t.clientX, clientY: t.clientY, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+            handleDragOver({ target: el, clientX: touch.clientX, clientY: touch.clientY, dataTransfer: touchDataTransfer, preventDefault: () => {} });
         }
     }, { passive: false });
 
     container.addEventListener('touchend', (e) => {
         if (!touchDataTransfer) return;
+        const touch = findTouch(e.changedTouches);
+        if (!touch) return;
+
+        if (!touchDragging) {
+            resetTouchState();
+            return;
+        }
+
         e.preventDefault();
-        const t = e.changedTouches[0];
-        const el = document.elementFromPoint(t.clientX, t.clientY);
+        const el = document.elementFromPoint(touch.clientX, touch.clientY);
         if (el) {
-            handleDrop({ target: el, clientX: t.clientX, clientY: t.clientY, dataTransfer: touchDataTransfer, preventDefault: () => {} });
+            handleDrop({
+                target: el,
+                clientX: touch.clientX,
+                clientY: touch.clientY,
+                dataTransfer: touchDataTransfer,
+                preventDefault: () => {},
+                stopPropagation: () => {}
+            });
         }
         handleDragEnd({ target: touchDragTarget });
-        touchDragTarget = null;
-        touchDataTransfer = null;
-    });
+        resetTouchState();
+    }, { passive: false });
+
+    container.addEventListener('touchcancel', cancelTouchDrag);
 }
 
 
@@ -565,9 +643,7 @@ function handleDrop(event) {
     //     saveProjectsData(); // Save after successful move and render
     // }
 
-    clearDragStyles(true); // Clean up UI
-    draggedCardId = null; // Reset state
-    draggedElement = null; // Reset state
+    clearDragStyles(true); // Clean up UI; dragend owns the remaining drag state
 }
 
 
