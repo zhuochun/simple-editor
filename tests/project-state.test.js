@@ -23,7 +23,7 @@ function createMemoryStorage() {
 
 async function loadDataModule(label) {
     globalThis.localStorage = createMemoryStorage();
-    const data = await import(`../data.js?test=${label}-${Date.now()}-${Math.random()}`);
+    const data = await import(`../projectState.js?test=${label}-${Date.now()}-${Math.random()}`);
     data.loadProjectsData();
     return { data, storage: globalThis.localStorage };
 }

@@ -1,6 +1,6 @@
 # Editor Module Boundary Design
 
-Status: Accepted implementation direction
+Status: Implemented
 
 ## Decision
 
@@ -36,6 +36,19 @@ Own DOM creation, rendering, focus, modal presentation, event wiring, and mappin
 
 Owns settings, prompt construction, and the OpenAI-compatible streaming request. It receives an explicit project-context snapshot and does not import project state. The controller owns placement, placeholder presentation, and the visible streaming lifecycle.
 
+## Implemented module map
+
+- `script.js` is the browser bootstrap and has no application decisions.
+- `editorController.js` composes the editor, maps user actions to project commands, and owns AI placement and visible streaming lifecycle.
+- `editorDom.js` owns DOM lookup, focus, hierarchy scrolling and highlighting, group-header presentation, textarea sizing, and modal lifecycle.
+- `projectState.js` is the sole project-state, hierarchy, ordering, timestamp, and persistence authority.
+- `projectFormat.js` owns versioned parsing, validation, normalization, and export serialization.
+- `projectTransfer.js` owns browser import/export effects and invokes project creation only after format validation succeeds.
+- `cardShortcuts.js` and `dragDrop.js` remain interaction adapters that call complete project commands.
+- `aiService.js` owns AI settings, prompt construction, and streaming transport using explicit context snapshots.
+
+The former `data.js` and monolithic `script.js` ownership paths have been retired rather than retained as compatibility wrappers.
+
 ## Interface direction
 
 - Project queries expose projects and active selection without exporting mutable module state.
@@ -57,3 +70,9 @@ Adopt in executable vertical slices: project-format compatibility, state access 
 Stop and reopen the design if an existing stored project violates the accepted hierarchy contract, a browser consumer depends on exported raw state, or preserving gesture and AI behavior requires duplicate state ownership.
 
 Reconsider further modules only when subsequent change history shows another repeated cross-boundary pressure.
+
+## Completion evidence
+
+- State-command tests cover persistence, split, merge, and AI context snapshots.
+- Format and transfer tests cover legacy normalization, unsupported versions, structural rejection, export envelopes, depth-first text output, and atomic project creation/selection.
+- Browser regression checks cover module loading, rendering, persistence, keyboard operations, project transfer UI, and placement tooltips.
