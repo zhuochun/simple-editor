@@ -27,7 +27,7 @@ Owns deterministic JSON parsing, version compatibility, normalization, structura
 
 ### Editor view
 
-Owns card, group, column, toolbar, and project-list DOM creation and presentation. It owns local edit lifecycles, focus, modal presentation, hierarchy highlighting, and rendering a supplied project snapshot. It emits user intent through callbacks and does not mutate project state, select AI policies, or know persistence and format rules.
+Owns card, group, column, toolbar, and project-list DOM creation and presentation. It owns local edit lifecycles, focus, AI modal presentation, hierarchy highlighting, and rendering through injected read-only project queries. It emits user intent through callbacks and does not mutate project state, select AI policies, or know persistence and format rules.
 
 ### Editor controller
 
@@ -46,7 +46,7 @@ Composes state, view, transfer, interaction adapters, and AI workflow. It maps v
 - `script.js` is the browser bootstrap and has no application decisions.
 - `editorController.js` is the composition root and maps user intent to project commands.
 - `editorView.js` owns editor and project-list rendering plus local editing lifecycles.
-- `editorDom.js` owns shared focus, hierarchy scrolling and highlighting, textarea sizing, and modal mechanics used by the view and workflows.
+- `editorDom.js` owns shared focus, hierarchy scrolling and highlighting, textarea sizing, and modal mechanics used by the view and controller prompt orchestration.
 - `aiWorkflow.js` owns AI placement and the visible streaming lifecycle.
 - `projectState.js` is the sole project-state, hierarchy, ordering, timestamp, and persistence authority.
 - `projectFormat.js` owns versioned parsing, validation, normalization, and export serialization.
@@ -63,8 +63,8 @@ The former `data.js` and monolithic `script.js` ownership paths are retired. The
 - Project mutations persist under the state owner's control.
 - Import produces a normalized value before the state owner creates a project.
 - AI generation receives an explicit context object.
-- The view receives data to render and emits intent; it does not import `projectState.js`.
-- The AI workflow receives explicit state and view capabilities; it does not reach through controller closure state.
+- The view receives read-only project queries and emits intent; it does not import `projectState.js`.
+- The AI workflow receives explicit state commands and one view interface; it does not query or mutate browser DOM directly.
 
 ## Preserved commitments
 
@@ -86,8 +86,8 @@ Reconsider further modules only when subsequent change history shows another rep
 
 - State-command tests cover persistence, split, merge, and AI context snapshots.
 - Format and transfer tests cover legacy normalization, unsupported versions, structural rejection, export envelopes, depth-first text output, and atomic project creation/selection.
-- View tests cover card and group presentation policy; browser checks cover rendered cards, columns, edit-intent wiring, and rename finalization through the view interface. `editorView.js` does not import project state.
-- AI workflow tests cover sibling/child placement, placeholder completion, and busy-state cleanup through explicit collaborators without invoking a remote AI provider.
+- View tests cover card and group presentation policy plus group-header updates through the public view interface; browser checks cover rendered cards, columns, edit-intent wiring, and rename finalization. `editorView.js` does not import project state.
+- AI workflow tests cover sibling/child placement, placeholder completion, and busy-state cleanup through one explicit view collaborator without invoking a remote AI provider.
 - Drag-command tests cover busy rejection, affected-column rendering, and moves that require a new column; browser logs confirm the drag adapter initializes against rendered draggable cards.
-- The 26-test non-AI suite, syntax/static checks, and browser checks cover rendering, persistence, rename finalization, split/merge, card add/delete, project transfer UI, AI-control visibility, placement tooltips, and zero runtime errors.
-- `editorController.js` is 483 lines of composition, project/card command mapping, prompt orchestration, startup, and adapter wiring; it contains no DOM construction, edit-widget implementation, AI placeholder policy, or streaming callbacks.
+- The 27-test non-AI suite, syntax/static checks, and browser checks cover rendering, persistence, rename finalization, split/merge, card add/delete, project transfer UI, AI-control visibility, placement tooltips, and zero runtime errors.
+- `editorController.js` is 479 lines of composition, project/card command mapping, prompt orchestration, startup, and adapter wiring; it contains no card or column DOM construction, edit-widget implementation, AI placeholder policy, or streaming callbacks.

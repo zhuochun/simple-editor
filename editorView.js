@@ -27,6 +27,7 @@ function getGroupPresentation(parentCard, maxNameLength, previewLength) {
 function createEditorView({
     columnsContainer,
     projectListContainer,
+    addProjectButton,
     model,
     actions,
     dom,
@@ -222,6 +223,101 @@ function createEditorView({
         Array.from(columnsContainer.children).forEach((column, index) => updateToolbarButtons(column, index));
     }
 
+    function updateGroupHeaderDisplay(parentCardId) {
+        const parentCard = model.getCard(parentCardId);
+        const header = dom.getGroupElement(parentCardId)?.querySelector('.group-header');
+        if (!header || !parentCard) return;
+
+        const presentation = getGroupPresentation(parentCard, cardNameMaxLength, groupHeaderPreviewLength);
+        header.textContent = presentation.text;
+        header.title = presentation.title;
+    }
+
+    function setInteractionLocked(locked) {
+        document.body.classList.toggle('ai-busy', locked);
+        if (locked) {
+            columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn').forEach(button => {
+                button.disabled = true;
+                button.classList.add('disabled-by-ai');
+            });
+            columnsContainer.querySelectorAll('.card-header').forEach(header => {
+                header.draggable = false;
+                header.classList.add('disabled-by-ai');
+            });
+            projectListContainer.querySelectorAll('.delete-project-btn, .project-item').forEach(element => {
+                if (element.classList.contains('project-item')) element.style.pointerEvents = 'none';
+                else element.disabled = true;
+                element.classList.add('disabled-by-ai');
+            });
+            addProjectButton.disabled = true;
+            addProjectButton.classList.add('disabled-by-ai');
+            return;
+        }
+
+        document.querySelectorAll('.disabled-by-ai').forEach(element => {
+            if (element.tagName === 'BUTTON') {
+                if (!(element.classList.contains('delete-column-btn') && element.classList.contains('hidden'))) {
+                    element.disabled = false;
+                }
+            } else if (element.classList.contains('card-header')) {
+                element.draggable = true;
+            } else if (element.classList.contains('project-item')) {
+                element.style.pointerEvents = '';
+            }
+            element.classList.remove('disabled-by-ai');
+        });
+        updateAllToolbarButtons();
+    }
+
+    function createCardStream(cardId, initialContent) {
+        const textarea = dom.getCardElement(cardId)?.querySelector('.card-content');
+        if (!textarea) return null;
+
+        return {
+            append(delta) {
+                if (textarea.value === initialContent) textarea.value = '';
+                textarea.value += delta;
+                dom.autoResizeTextarea({ target: textarea });
+            },
+            replace(content, resize = false) {
+                textarea.value = content;
+                if (resize) dom.autoResizeTextarea({ target: textarea });
+            },
+            finish() {
+                textarea.classList.remove('ai-loading');
+            }
+        };
+    }
+
+    function showCustomAiPrompt(cardId, onSubmit) {
+        dom.createModal(
+            'Custom AI Prompt',
+            `<p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
+             <textarea id="modal-custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>`,
+            'Submit',
+            modalElement => {
+                const userPrompt = modalElement.querySelector('#modal-custom-prompt-input').value.trim();
+                if (!userPrompt) {
+                    alert('Please enter a prompt.');
+                    return;
+                }
+                onSubmit(userPrompt);
+            }
+        );
+    }
+
+    function updateAiFeatureVisibility(isValid) {
+        document.body.classList.toggle('ai-ready', isValid);
+        document.querySelectorAll('.ai-feature button').forEach(button => {
+            if (button.classList.contains('add-prompt-btn') || button.classList.contains('global-prompt-btn')) {
+                button.disabled = !isValid;
+            } else if (button.closest('.card')) {
+                button.disabled = !isValid;
+            }
+        });
+        updateAllToolbarButtons();
+    }
+
     function renderProjectList() {
         projectListContainer.innerHTML = '';
         const projects = model.getProjects().sort((left, right) => right.lastModified - left.lastModified);
@@ -293,7 +389,7 @@ function createEditorView({
         if (!cardElement) return;
         const cardId = cardElement.dataset.cardId;
         textarea.classList.remove('ai-loading');
-        if (actions.updateCardContent(cardId, textarea.value)) dom.updateGroupHeaderDisplay(cardId);
+        if (actions.updateCardContent(cardId, textarea.value)) updateGroupHeaderDisplay(cardId);
         cardElement.classList.remove('editing');
         dom.clearHighlights();
     }
@@ -333,7 +429,7 @@ function createEditorView({
             const finalName = getCardDisplayName(model.getCard(cardId), cardNameMaxLength);
             nameDisplay.textContent = finalName.visible;
             nameDisplay.title = finalName.full;
-            dom.updateGroupHeaderDisplay(cardId);
+            updateGroupHeaderDisplay(cardId);
             input.remove();
             nameDisplay.style.display = '';
         };
@@ -414,13 +510,19 @@ function createEditorView({
 
     return {
         appendColumn,
+        createCardStream,
+        focusCard: dom.focusCardTextarea,
         insertCard,
         removeCardElements,
         removeColumn,
         renderApp,
         renderColumnContent,
         renderProjectList,
+        setInteractionLocked,
+        showCustomAiPrompt,
+        updateAiFeatureVisibility,
         updateAllToolbarButtons,
+        updateGroupHeaderDisplay,
         updateToolbarButtons
     };
 }

@@ -1,8 +1,6 @@
 function createEditorDom({
     projectState,
-    columnsContainer,
-    cardNameMaxLength = 50,
-    groupHeaderPreviewLength = 60
+    columnsContainer
 }) {
     function getCardElement(cardId) {
         return document.getElementById(`card-${cardId}`);
@@ -107,29 +105,6 @@ function createEditorDom({
         }
     }
 
-    function updateGroupHeaderDisplay(parentCardId) {
-        const groupElement = getGroupElement(parentCardId);
-        const parentCard = projectState.getCard(parentCardId);
-        const header = groupElement?.querySelector('.group-header');
-        if (!header || !parentCard) return;
-
-        if (parentCard.name) {
-            const truncatedName = parentCard.name.length > cardNameMaxLength
-                ? `${parentCard.name.substring(0, cardNameMaxLength)}...`
-                : parentCard.name;
-            header.textContent = `>> ${truncatedName}`;
-            header.title = `Children of ${parentCard.name}`;
-            return;
-        }
-
-        const idPart = `#${parentCardId.slice(-4)}`;
-        const trimmedContent = parentCard.content?.trim() || '';
-        const preview = trimmedContent.substring(0, groupHeaderPreviewLength);
-        const ellipsis = trimmedContent.length > groupHeaderPreviewLength ? '...' : '';
-        header.textContent = `>> ${idPart}${preview ? `: ${preview}${ellipsis}` : ''}`;
-        header.title = `Children of ${idPart}${preview ? `: ${trimmedContent}` : ''}`;
-    }
-
     function focusCardTextarea(cardId, position = 'preserve') {
         const textarea = getCardElement(cardId)?.querySelector('textarea.card-content');
         if (!textarea) return;
@@ -220,8 +195,7 @@ function createEditorDom({
         getGroupElement,
         highlightHierarchy,
         scrollHierarchy,
-        scrollIntoViewIfNeeded,
-        updateGroupHeaderDisplay
+        scrollIntoViewIfNeeded
     };
 }
 

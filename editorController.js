@@ -63,18 +63,16 @@ function initializeEditorApp() {
         getGroupElement,
         highlightHierarchy,
         scrollHierarchy,
-        scrollIntoViewIfNeeded,
-        updateGroupHeaderDisplay
+        scrollIntoViewIfNeeded
     } = createEditorDom({
         projectState: data,
-        columnsContainer,
-        cardNameMaxLength: CARD_NAME_MAX_LENGTH,
-        groupHeaderPreviewLength: GROUP_HEADER_PREVIEW_LENGTH
+        columnsContainer
     });
     let aiWorkflow;
     const view = createEditorView({
         columnsContainer,
         projectListContainer,
+        addProjectButton: addProjectBtn,
         model: {
             minColumns: data.MIN_COLUMNS,
             getActiveProjectData: data.getActiveProjectData,
@@ -117,8 +115,7 @@ function initializeEditorApp() {
             getGroupElement,
             highlightHierarchy,
             scrollHierarchy,
-            scrollIntoViewIfNeeded,
-            updateGroupHeaderDisplay
+            scrollIntoViewIfNeeded
         },
         isAiReady: aiService.areAiSettingsValid,
         cardNameMaxLength: CARD_NAME_MAX_LENGTH,
@@ -134,17 +131,16 @@ function initializeEditorApp() {
     aiWorkflow = createAiWorkflow({
         projectState: data,
         aiService,
-        columnsContainer,
-        projectListContainer,
-        addProjectButton: addProjectBtn,
         addCard: handleAddCard,
         deleteCard: handleDeleteCard,
-        getCardElement,
-        autoResizeTextarea,
-        createModal,
-        focusCardTextarea,
-        updateGroupHeaderDisplay,
-        updateAllToolbarButtons: view.updateAllToolbarButtons
+        view: {
+            createCardStream: view.createCardStream,
+            focusCard: view.focusCard,
+            setInteractionLocked: view.setInteractionLocked,
+            showCustomAiPrompt: view.showCustomAiPrompt,
+            updateAiFeatureVisibility: view.updateAiFeatureVisibility,
+            updateGroupHeaderDisplay: view.updateGroupHeaderDisplay
+        }
     });
 
 

@@ -63,17 +63,9 @@ function getAiActionPlan(action, card, siblings = []) {
 function createAiWorkflow({
     projectState,
     aiService,
-    columnsContainer,
-    projectListContainer,
-    addProjectButton,
     addCard,
     deleteCard,
-    getCardElement,
-    autoResizeTextarea,
-    createModal,
-    focusCardTextarea,
-    updateGroupHeaderDisplay,
-    updateAllToolbarButtons
+    view
 }) {
     let busy = false;
 
@@ -83,57 +75,23 @@ function createAiWorkflow({
 
     function disableConflictingActions() {
         busy = true;
-        document.body.classList.add('ai-busy');
-
-        columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn').forEach(button => {
-            button.disabled = true;
-            button.classList.add('disabled-by-ai');
-        });
-        columnsContainer.querySelectorAll('.card-header').forEach(header => {
-            header.draggable = false;
-            header.classList.add('disabled-by-ai');
-        });
-        projectListContainer.querySelectorAll('.delete-project-btn, .project-item').forEach(element => {
-            if (element.classList.contains('project-item')) {
-                element.style.pointerEvents = 'none';
-            } else {
-                element.disabled = true;
-            }
-            element.classList.add('disabled-by-ai');
-        });
-        addProjectButton.disabled = true;
-        addProjectButton.classList.add('disabled-by-ai');
+        view.setInteractionLocked(true);
     }
 
     function enableConflictingActions() {
         busy = false;
-        document.body.classList.remove('ai-busy');
-
-        document.querySelectorAll('.disabled-by-ai').forEach(element => {
-            if (element.tagName === 'BUTTON') {
-                if (!(element.classList.contains('delete-column-btn') && element.classList.contains('hidden'))) {
-                    element.disabled = false;
-                }
-            } else if (element.classList.contains('card-header')) {
-                element.draggable = true;
-            } else if (element.classList.contains('project-item')) {
-                element.style.pointerEvents = '';
-            }
-            element.classList.remove('disabled-by-ai');
-        });
-        updateAllToolbarButtons();
+        view.setInteractionLocked(false);
     }
 
-    function processMultiPartResponse(fullResponse, placeholderCardId, placeholderTextarea, originalCardId, targetColumnIndex, parentIdForNewCards) {
+    function processMultiPartResponse(fullResponse, placeholderCardId, cardStream, originalCardId, targetColumnIndex, parentIdForNewCards) {
         const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(part => part.trim()).filter(Boolean);
         let lastCardId = null;
 
         if (parts.length > 0) {
             const firstPartContent = parts[0];
             if (projectState.updateCardContentData(placeholderCardId, firstPartContent)) {
-                placeholderTextarea.value = firstPartContent;
-                placeholderTextarea.classList.remove('ai-loading');
-                autoResizeTextarea({ target: placeholderTextarea });
+                cardStream.replace(firstPartContent, true);
+                cardStream.finish();
                 lastCardId = placeholderCardId;
             } else {
                 deleteCard(placeholderCardId);
@@ -157,10 +115,10 @@ function createAiWorkflow({
             deleteCard(placeholderCardId);
         }
 
-        updateGroupHeaderDisplay(parentIdForNewCards);
+        view.updateGroupHeaderDisplay(parentIdForNewCards);
         const cardIdToFocus = parts.length > 0 ? lastCardId : null;
         if (cardIdToFocus && projectState.getCard(cardIdToFocus)) {
-            requestAnimationFrame(() => focusCardTextarea(cardIdToFocus, 'start'));
+            requestAnimationFrame(() => view.focusCard(cardIdToFocus, 'start'));
         }
         console.log(`AI Multi-Part processing completed for original card ${originalCardId}. Last created/updated card: ${lastCardId}`);
     }
@@ -198,8 +156,8 @@ function createAiWorkflow({
             return;
         }
 
-        const placeholderTextarea = getCardElement(placeholderCardId)?.querySelector('.card-content');
-        if (!placeholderTextarea) {
+        const cardStream = view.createCardStream(placeholderCardId, AI_PLACEHOLDER_TEXT);
+        if (!cardStream) {
             projectState.updateCardContentData(placeholderCardId, 'Error: Could not find card textarea.');
             enableConflictingActions();
             return;
@@ -209,32 +167,31 @@ function createAiWorkflow({
             const serviceArguments = {
                 context,
                 onChunk: delta => {
-                    if (placeholderTextarea.value === AI_PLACEHOLDER_TEXT) placeholderTextarea.value = '';
-                    placeholderTextarea.value += delta;
-                    autoResizeTextarea({ target: placeholderTextarea });
+                    cardStream.append(delta);
                 },
                 onError: error => {
-                    placeholderTextarea.value = `AI Error: ${error.message}`;
-                    placeholderTextarea.classList.remove('ai-loading');
-                    projectState.updateCardContentData(placeholderCardId, placeholderTextarea.value);
+                    const errorContent = `AI Error: ${error.message}`;
+                    cardStream.replace(errorContent);
+                    cardStream.finish();
+                    projectState.updateCardContentData(placeholderCardId, errorContent);
                     enableConflictingActions();
                 },
                 onDone: finalContent => {
-                    placeholderTextarea.classList.remove('ai-loading');
+                    cardStream.finish();
                     if (plan.useMultiPartResponseHandler) {
                         processMultiPartResponse(
                             finalContent,
                             placeholderCardId,
-                            placeholderTextarea,
+                            cardStream,
                             cardId,
                             plan.targetColumnIndex,
                             plan.parentIdForNewCards
                         );
                     } else {
                         if (projectState.updateCardContentData(placeholderCardId, finalContent)) {
-                            updateGroupHeaderDisplay(placeholderCardId);
+                            view.updateGroupHeaderDisplay(placeholderCardId);
                         }
-                        focusCardTextarea(placeholderCardId, 'start');
+                        view.focusCard(placeholderCardId, 'start');
                     }
                     enableConflictingActions();
                 }
@@ -248,9 +205,10 @@ function createAiWorkflow({
             }
             aiService[plan.method](serviceArguments);
         } catch (error) {
-            placeholderTextarea.value = `Error during AI call setup: ${error.message}`;
-            placeholderTextarea.classList.remove('ai-loading');
-            projectState.updateCardContentData(placeholderCardId, placeholderTextarea.value);
+            const errorContent = `Error during AI call setup: ${error.message}`;
+            cardStream.replace(errorContent);
+            cardStream.finish();
+            projectState.updateCardContentData(placeholderCardId, errorContent);
             enableConflictingActions();
         }
     }
@@ -277,32 +235,13 @@ function createAiWorkflow({
             return;
         }
 
-        createModal(
-            'Custom AI Prompt',
-            `<p>Enter your prompt below. It will be sent to the AI along with the content of card #${cardId.slice(-4)}.</p>
-             <textarea id="modal-custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>`,
-            'Submit',
-            modalElement => {
-                const userPrompt = modalElement.querySelector('#modal-custom-prompt-input').value.trim();
-                if (!userPrompt) {
-                    alert('Please enter a prompt.');
-                    return;
-                }
-                execute(cardId, getAiActionPlan('custom', card), userPrompt);
-            }
-        );
+        view.showCustomAiPrompt(cardId, userPrompt => {
+            execute(cardId, getAiActionPlan('custom', card), userPrompt);
+        });
     }
 
     function updateFeatureVisibility(isValid) {
-        document.body.classList.toggle('ai-ready', isValid);
-        document.querySelectorAll('.ai-feature button').forEach(button => {
-            if (button.classList.contains('add-prompt-btn') || button.classList.contains('global-prompt-btn')) {
-                button.disabled = !isValid;
-            } else if (button.closest('.card')) {
-                button.disabled = !isValid;
-            }
-        });
-        updateAllToolbarButtons();
+        view.updateAiFeatureVisibility(isValid);
     }
 
     return {
