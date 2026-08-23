@@ -1,3 +1,9 @@
+# Data Schema
+
+Status: Current
+
+This document is the current authority for persisted project data and relationships. Product meaning and compatibility policy are defined in [Domain](domain.md).
+
 ## Overview
 
 The application manages multiple writing projects, each structured as a hierarchical, multi-column layout of cards (similar to a Kanban board or outliner). All project data is stored client-side in the browser's `localStorage`.
