@@ -103,7 +103,7 @@ Here's the breakdown of the nested data structures:
         *   **Description:** Project-wide guidance included in AI context. Legacy imports default it to an empty string.
     *   `options`:
         *   **Type:** `Object` (Dictionary/Map)
-        *   **Description:** Immutable sibling-document snapshots keyed by Option ID. Each record resolves to one live owner through `option.cardId`; Cards never embed Options. Legacy version-1 input defaults it to an empty object.
+        *   **Description:** Immutable Card alternatives keyed by Option ID. Each record resolves to one live owner through `option.cardId`; Cards never embed Options. Legacy version-1 input defaults it to an empty object.
 
 ---
 
@@ -198,8 +198,9 @@ Here's the breakdown of the nested data structures:
 - `cardId` must resolve to a live Card and is the sole History ownership link.
 - `source` is `Manual` or `AI`; it records provenance, not a different Option type.
 - `createdAt` is a finite non-negative millisecond timestamp. History sorts descending by it and then descending by Option ID.
-- `snapshot.cards` contains the ordered direct siblings captured for the owner. IDs are unique, the owner appears exactly once, `name` is text or `null`, `content` is text, and `order` is finite.
-- Snapshot cards deliberately omit `parentId`, `columnIndex`, `color`, descendants, and attached Options. A captured Card may no longer be live because applying the snapshot may recreate it inside the owner's current sibling scope.
+- Newly created `snapshot.cards` contains exactly the owner Card. Its ID matches `cardId`, `name` is text or `null`, `content` is text, and `order` is finite compatibility metadata.
+- Version-2 imports may contain historical sibling records in addition to the owner. Their IDs remain unique and their data is preserved on round trip, but current behavior reads and applies only the owner record.
+- Snapshot cards deliberately omit `parentId`, `columnIndex`, `color`, descendants, and attached Options. Applying an Option updates only the live owner's name and content; it never recreates, reorders, reparents, or deletes Cards.
 - Unknown Option, snapshot, and snapshot-card properties are preserved on supported-version round trips and ignored by current behavior.
 
 ---
@@ -213,7 +214,7 @@ Here's the breakdown of the nested data structures:
 5.  **Card Placement (Column):** `card.columnIndex` links a card to a specific column index.
 6.  **Card Placement (Hierarchy):** `card.parentId` links a card to its parent (or `null` if it's a root).
 7.  **Card Placement (Vertical Order):** `card.order` sorts cards vertically within the same parent/column context.
-8.  **Options Collection:** `project.data.options` stores historical sibling snapshots once, keyed by Option ID and linked to one owner through `cardId`.
+8.  **Options Collection:** `project.data.options` stores historical Card alternatives once, keyed by Option ID and linked to one owner through `cardId`.
 9.  **Uniqueness:** `projectId`s and `cardId`s must be unique across the application instance; Option IDs are unique within their project.
 
 This schema provides a flexible structure for representing hierarchical data across columns, while the flattened `cards` dictionary allows for efficient access and modification of individual cards. The use of `localStorage` makes it a purely client-side application.

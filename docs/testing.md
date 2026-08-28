@@ -15,7 +15,7 @@ npm test
 The Node test suite does not contact an AI provider. It covers:
 
 - Project-format normalization, version-1/version-2 compatibility, Option validation, export envelopes, and Current-only text traversal.
-- Project-state persistence, split, merge, hierarchy behavior, card-owned Option lifecycle, scope-safe restore, rollback, and AI context snapshots.
+- Project-state persistence, split, merge, hierarchy behavior, card-owned Option lifecycle, duplicate-safe Manual save, duplicate-safe and no-write Current restore, scope-safe restore, rollback, and AI context snapshots.
 - Atomic project import and selection effects.
 - Map and Document keyboard scope, split, navigation, merge, and blur-save coordination.
 - Drag command mapping and AI-busy rejection.
@@ -40,15 +40,17 @@ DOM and interaction changes also need a local browser smoke check. Exercise the 
 
 For Document Options changes, also record:
 
-- Current-left/History-right desktop order and narrow-width History reflow.
-- Read-only preview, newer/older boundary behavior, stable owner while focus/add/split changes, and no Current mutation while browsing.
-- Manual save, use-as-current, final-Option delete guard, and reload persistence.
+- Editable-flow-left/History-right desktop order and narrow-width History reflow.
+- Neutral divider-only Document Cards with no Map color, selection border, owner badge, or Card ID.
+- Full-height Document textareas with no internal scrollbar, plus desktop-pane and narrow-workspace viewport restoration after deferred textarea sizing and nearest scroll after Ctrl+Enter.
+- Focus-driven Card History selection, read-only preview, newer/older boundary behavior, and no Current mutation while browsing.
+- Per-Card Manual save, owner-only use-as-current, final-Option delete guard, legacy multi-Card snapshot compatibility, and reload persistence.
 - Absence of drag, column, child, Expand, Breakdown, and Custom-child commands in Document mode; `Alt+Enter` must have no mutation.
 - Version-2 Manual/AI History import, version-1 and unversioned empty History, and invalid-Option import with no project or selection effect.
 
 Use focused manual checks for behavior that the Node suite cannot faithfully reproduce:
 
-- Pointer and touch drag behavior, scrolling, and hierarchy highlighting.
+- Pointer and touch drag behavior, hierarchy highlighting, Parent-to-sibling-group color continuity, compact group spacing, recursive Parent/first-Child alignment after Map focus, and ancestor visibility for focus deep inside a long sibling group.
 - Responsive sidebar and column behavior.
 - Import/export dialogs and browser download effects.
 - AI configuration visibility and custom-prompt modal behavior.

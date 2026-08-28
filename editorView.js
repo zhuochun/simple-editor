@@ -1,3 +1,20 @@
+const ICON_PATHS = {
+    continue: '<path d="M12 4v12m0 0 4-4m-4 4-4-4"/>',
+    expand: '<path d="M6 4v4a4 4 0 0 0 4 4h8m0 0-3-3m3 3-3 3"/>',
+    summarize: '<path d="M4 6h16M4 10h12M4 14h8m4 0h4m0 0-2-2m2 2-2 2"/>',
+    breakdown: '<circle cx="12" cy="5" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M12 7v4m0 0H6v5m6-5h6v5"/>',
+    custom: '<path d="m12 3 1.1 3.2L16 7.5l-2.9 1.3L12 12l-1.1-3.2L8 7.5l2.9-1.3L12 3Z"/><path d="m18.5 13 .7 2.1 1.8.9-1.8.9-.7 2.1-.7-2.1L16 16l1.8-.9.7-2.1Z"/>',
+    document: '<path d="M6 3h9l3 3v15H6zM15 3v4h3M9 10h6M9 14h6M9 18h4"/>',
+    option: '<path d="M7 4h10v16l-5-3-5 3z"/>',
+    add: '<path d="M12 5v14M5 12h14"/>',
+    delete: '<path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7m3 4v5m4-5v5"/>',
+    export: '<path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/>'
+};
+
+function iconMarkup(name) {
+    return `<svg class="icon icon-${name}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">${ICON_PATHS[name]}</svg>`;
+}
+
 function getCardDisplayName(card, maxLength) {
     const full = card.name || `#${card.id.slice(-4)}`;
     return {
@@ -51,10 +68,6 @@ function getHierarchyDepth(card, getCard) {
     return depth;
 }
 
-function shouldOpenDocumentFromCardClick(documentMode, target) {
-    return !documentMode && !target.closest('button, input');
-}
-
 function createEditorView({
     columnsContainer,
     projectListContainer,
@@ -75,50 +88,59 @@ function createEditorView({
         const cardElement = document.createElement('div');
         cardElement.id = `card-${cardData.id}`;
         cardElement.className = documentMode ? 'card document-card' : 'card';
-        cardElement.classList.toggle('document-owner-card', documentMode && cardData.id === documentOwnerCardId);
         cardElement.dataset.cardId = cardData.id;
-        const cardColor = model.getColorForCard(cardData);
-        const hierarchyDepth = getHierarchyDepth(cardData, model.getCard);
-        const colorMatch = cardColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-        cardElement.style.backgroundColor = cardColor;
-        cardElement.style.setProperty('--hierarchy-depth', hierarchyDepth);
-        cardElement.style.setProperty('--hierarchy-rail', colorMatch
-            ? `hsl(${colorMatch[1]}, 58%, ${Math.max(35, 52 - hierarchyDepth * 3)}%)`
-            : '#718096');
+        if (!documentMode) {
+            const cardColor = model.getColorForCard(cardData);
+            cardElement.style.backgroundColor = cardColor;
+        }
 
         const displayName = getCardDisplayName(cardData, cardNameMaxLength);
         const aiReady = isAiReady();
         cardElement.innerHTML = `
             <div class="card-header" draggable="${!documentMode}">
-                <span class="card-name-display" title="${displayName.full}">${displayName.visible}</span>
+                ${documentMode ? '' : `<span class="card-name-display" title="${displayName.full}">${displayName.visible}</span>`}
                 <div class="card-ai-actions ai-feature">
-                    <button class="ai-continue-btn" title="Continue as next sibling" ${!aiReady ? 'disabled' : ''}>⬇️</button>
-                    ${documentMode ? '' : `<button class="ai-expand-btn" title="Elaborate as child" ${!aiReady ? 'disabled' : ''}>↕️</button>`}
-                    <button class="ai-summarize-btn" title="Create summary after card" ${!aiReady ? 'disabled' : ''}>⏪</button>
-                    ${documentMode ? '' : `<button class="ai-breakdown-btn" title="Brainstorm as children" ${!aiReady ? 'disabled' : ''}>🧠</button>`}
-                    <button class="ai-custom-btn" title="Choose AI result target" ${!aiReady ? 'disabled' : ''}>✨</button>
+                    <button class="ai-continue-btn" title="Continue as next sibling" aria-label="Continue as next sibling" ${!aiReady ? 'disabled' : ''}>${iconMarkup('continue')}</button>
+                    ${documentMode ? '' : `<button class="ai-expand-btn" title="Elaborate as child" aria-label="Elaborate as child" ${!aiReady ? 'disabled' : ''}>${iconMarkup('expand')}</button>`}
+                    <button class="ai-summarize-btn" title="Create summary after card" aria-label="Create summary after card" ${!aiReady ? 'disabled' : ''}>${iconMarkup('summarize')}</button>
+                    ${documentMode ? '' : `<button class="ai-breakdown-btn" title="Brainstorm as children" aria-label="Brainstorm as children" ${!aiReady ? 'disabled' : ''}>${iconMarkup('breakdown')}</button>`}
+                    <button class="ai-custom-btn" title="Choose AI result target" aria-label="Choose AI result target" ${!aiReady ? 'disabled' : ''}>${iconMarkup('custom')}</button>
                 </div>
                 <div class="card-actions">
-                    ${documentMode ? '' : '<button class="add-child-btn" title="Add Child Card (to next column)">➕</button>'}
-                    ${documentMode ? '' : '<button class="delete-card-btn" title="Delete Card">🗑️</button>'}
+                    ${documentMode ? `<button class="save-card-option-btn" title="Save this Card as an Option" aria-label="Save this Card as an Option">${iconMarkup('option')}</button>` : ''}
+                    ${documentMode ? '' : `<button class="open-document-btn" title="Open sibling document" aria-label="Open sibling document">${iconMarkup('document')}</button>`}
+                    ${documentMode ? '' : `<button class="add-child-btn" title="Add child Card" aria-label="Add child Card">${iconMarkup('add')}</button>`}
+                    ${documentMode ? '' : `<button class="delete-card-btn" title="Delete Card" aria-label="Delete Card">${iconMarkup('delete')}</button>`}
                 </div>
             </div>
             <textarea class="card-content" placeholder="Enter text...">${cardData.content || ''}</textarea>
         `;
 
         const textarea = cardElement.querySelector('.card-content');
-        cardElement.querySelector('.card-name-display').addEventListener('dblclick', () => makeCardNameEditable(cardData.id, cardElement));
+        cardElement.querySelector('.card-name-display')?.addEventListener('dblclick', () => makeCardNameEditable(cardData.id, cardElement));
         textarea.addEventListener('blur', handleTextareaBlur);
         textarea.addEventListener('focus', handleTextareaFocus);
         textarea.addEventListener('input', dom.autoResizeTextarea);
         requestAnimationFrame(() => dom.autoResizeTextarea({ target: textarea }));
 
-        if (!documentMode) {
-            cardElement.addEventListener('click', event => {
-                if (!shouldOpenDocumentFromCardClick(documentMode, event.target)) return;
-                openDocument(cardData.id);
-            });
-        }
+        cardElement.querySelector('.open-document-btn')?.addEventListener('click', event => {
+            event.stopPropagation();
+            openDocument(cardData.id);
+        });
+        cardElement.querySelector('.save-card-option-btn')?.addEventListener('click', event => {
+            event.stopPropagation();
+            const result = actions.saveOption(cardData.id);
+            const status = columnsContainer.querySelector('.history-status');
+            if (!result.success) {
+                if (status) status.textContent = result.reason === 'persistence-failed'
+                    ? 'The Option could not be saved because browser storage is unavailable or full.'
+                    : 'The Option could not be saved.';
+                return;
+            }
+            focusedDocumentCardId = cardData.id;
+            selectedOptionId = result.option.id;
+            renderHistoryPane();
+        });
         cardElement.querySelector('.add-child-btn')?.addEventListener('click', event => {
             event.stopPropagation();
             actions.addChildCard(cardData.id);
@@ -151,6 +173,7 @@ function createEditorView({
         groupElement.id = `group-${parentId}`;
         groupElement.className = 'card-group';
         groupElement.dataset.parentId = parentId;
+        groupElement.style.setProperty('--group-color', model.getColorForCard(parentCard));
         groupElement.innerHTML = `<div class="group-header" title="${presentation.title}">${presentation.text}</div>`;
         groupElement.addEventListener('dblclick', event => {
             if (event.target.closest('textarea.card-content') || event.target.closest('.card')) return;
@@ -166,10 +189,10 @@ function createEditorView({
         columnElement.className = 'column';
         columnElement.dataset.columnIndex = columnIndex;
         const aiReady = isAiReady();
-        const promptIndicator = model.getColumnData(columnIndex)?.prompt ? '📝' : '';
-        const globalPromptIndicator = model.getGlobalPromptData() ? '📝' : '';
+        const hasPrompt = Boolean(model.getColumnData(columnIndex)?.prompt);
+        const hasGlobalPrompt = Boolean(model.getGlobalPromptData());
         const globalPromptButton = columnIndex === 0
-            ? `<button class="global-prompt-btn ai-feature" title="Set Global Prompt" ${!aiReady ? 'disabled' : ''}>Global Prompt ${globalPromptIndicator}</button>`
+            ? `<button class="global-prompt-btn ai-feature${hasGlobalPrompt ? ' has-prompt' : ''}" title="Set Global Prompt" ${!aiReady ? 'disabled' : ''}>Global Prompt</button>`
             : '';
 
         columnElement.innerHTML = `
@@ -177,7 +200,7 @@ function createEditorView({
                 <div class="toolbar-left">
                     <button class="add-card-btn">Add Card</button>
                     ${globalPromptButton}
-                    <button class="add-prompt-btn ai-feature" title="Set Column Prompt" ${!aiReady ? 'disabled' : ''}>Prompt ${promptIndicator}</button>
+                    <button class="add-prompt-btn ai-feature${hasPrompt ? ' has-prompt' : ''}" title="Set Column Prompt" ${!aiReady ? 'disabled' : ''}>Prompt</button>
                 </div>
                 <div class="toolbar-right">
                     <button class="add-column-btn">Add Column</button>
@@ -225,24 +248,27 @@ function createEditorView({
 
     function renderOptionPreview(container, option) {
         container.innerHTML = '';
-        for (const snapshotCard of option.snapshot.cards) {
-            const preview = document.createElement('article');
-            preview.className = 'history-card';
+        const snapshotCard = option.snapshot.cards.find(card => card.id === option.cardId);
+        if (!snapshotCard) return;
+        const preview = document.createElement('article');
+        preview.className = 'history-card';
+        if (snapshotCard.name) {
             const title = document.createElement('div');
             title.className = 'history-card-name';
-            title.textContent = snapshotCard.name || `#${snapshotCard.id.slice(-4)}`;
-            const content = document.createElement('div');
-            content.className = 'history-card-content';
-            content.textContent = snapshotCard.content || '';
-            preview.append(title, content);
-            container.appendChild(preview);
+            title.textContent = snapshotCard.name;
+            preview.appendChild(title);
         }
+        const content = document.createElement('div');
+        content.className = 'history-card-content';
+        content.textContent = snapshotCard.content || '';
+        preview.appendChild(content);
+        container.appendChild(preview);
     }
 
     function renderHistoryPane() {
         const pane = columnsContainer.querySelector('.document-history');
-        if (!pane || !documentOwnerCardId) return;
-        const options = model.getOptionsForCard(documentOwnerCardId);
+        if (!pane || !focusedDocumentCardId) return;
+        const options = model.getOptionsForCard(focusedDocumentCardId);
         const selected = getHistorySelection(options, selectedOptionId);
         selectedOptionId = selected?.id || null;
 
@@ -250,7 +276,7 @@ function createEditorView({
             <div class="document-pane-heading">
                 <div>
                     <span class="eyebrow">History</span>
-                    <h2>Options</h2>
+                    <h2>Card options</h2>
                 </div>
                 <span class="option-count">${options.length}</span>
             </div>
@@ -279,12 +305,10 @@ function createEditorView({
             const useButton = pane.querySelector('.use-option-btn');
             useButton.disabled = !availability.available;
             if (!availability.available) {
-                status.textContent = availability.reason === 'document-scope-descendants'
-                    ? 'Cannot use this Option because it would remove a Card that has descendants.'
-                    : 'This Option no longer matches the owner’s current sibling scope.';
+                status.textContent = 'This Option no longer contains its owner Card.';
             }
         } else {
-            preview.innerHTML = '<p class="empty-history">No Options yet. Save Current to create the first one.</p>';
+            preview.innerHTML = '<p class="empty-history">No Options yet. Save this Card to create the first one.</p>';
         }
 
         const select = direction => {
@@ -299,7 +323,7 @@ function createEditorView({
             if (!result.success) {
                 status.textContent = result.reason === 'persistence-failed'
                     ? 'Current could not be replaced because browser storage rejected the change.'
-                    : 'This Option cannot be used in the current sibling scope.';
+                    : 'This Option cannot be used for the current Card.';
                 return;
             }
             selectedOptionId = selected.id;
@@ -319,6 +343,10 @@ function createEditorView({
     }
 
     function renderDocument() {
+        const previousScrollPositions = [
+            ['.document-current', columnsContainer.querySelector('.document-current')?.scrollTop],
+            ['.document-workspace', columnsContainer.querySelector('.document-workspace')?.scrollTop]
+        ];
         const owner = model.getCard(documentOwnerCardId);
         if (!owner) {
             mode = 'map';
@@ -328,7 +356,6 @@ function createEditorView({
             return;
         }
 
-        const ownerName = getCardDisplayName(owner, cardNameMaxLength).full;
         const siblings = model.getSiblingCards(owner.id);
         if (!siblings.some(card => card.id === focusedDocumentCardId)) focusedDocumentCardId = owner.id;
         columnsContainer.classList.add('document-mode');
@@ -337,21 +364,12 @@ function createEditorView({
             <section class="document-view">
                 <header class="document-toolbar">
                     <button class="back-to-map-btn">← Map</button>
-                    <div class="document-identity">
-                        <span class="eyebrow">Sibling document</span>
-                        <strong class="document-owner-name"></strong>
-                    </div>
                     <div class="document-toolbar-actions">
-                        <button class="save-option-btn">Save current as option</button>
                         <button class="add-sibling-btn">Add sibling</button>
                     </div>
                 </header>
                 <div class="document-workspace">
                     <main class="document-current" aria-label="Editable current document">
-                        <div class="document-pane-heading">
-                            <div><span class="eyebrow">Current</span><h1>Editable document</h1></div>
-                            <span class="document-card-count">${siblings.length} card${siblings.length === 1 ? '' : 's'}</span>
-                        </div>
                         <div class="document-cards"></div>
                     </main>
                     <aside class="document-history" aria-label="Read-only history options" tabindex="0"></aside>
@@ -361,22 +379,19 @@ function createEditorView({
 
         columnsContainer.querySelector('.document-view').dataset.ownerCardId = owner.id;
         const cardsContainer = columnsContainer.querySelector('.document-cards');
-        columnsContainer.querySelector('.document-owner-name').textContent = ownerName;
         siblings.forEach(card => cardsContainer.appendChild(createCardElement(card, { documentMode: true })));
+        if (previousScrollPositions.some(([, scrollTop]) => Number.isFinite(scrollTop))) {
+            requestAnimationFrame(() => {
+                for (const [selector, scrollTop] of previousScrollPositions) {
+                    if (Number.isFinite(scrollTop)) {
+                        columnsContainer.querySelector(selector).scrollTop = scrollTop;
+                    }
+                }
+            });
+        }
         renderHistoryPane();
 
         columnsContainer.querySelector('.back-to-map-btn').addEventListener('click', closeDocument);
-        columnsContainer.querySelector('.save-option-btn').addEventListener('click', () => {
-            const result = actions.saveOption(documentOwnerCardId);
-            if (!result.success) {
-                columnsContainer.querySelector('.history-status').textContent = result.reason === 'persistence-failed'
-                    ? 'The Option could not be saved because browser storage is unavailable or full.'
-                    : 'The Option could not be saved.';
-                return;
-            }
-            selectedOptionId = result.option.id;
-            renderHistoryPane();
-        });
         columnsContainer.querySelector('.add-sibling-btn').addEventListener('click', () => {
             const result = actions.addDocumentSibling(documentOwnerCardId, focusedDocumentCardId);
             if (!result.success) return;
@@ -387,7 +402,7 @@ function createEditorView({
         columnsContainer.querySelector('.document-history').addEventListener('keydown', event => {
             if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
             event.preventDefault();
-            const options = model.getOptionsForCard(documentOwnerCardId);
+            const options = model.getOptionsForCard(focusedDocumentCardId);
             selectedOptionId = getAdjacentOptionId(
                 options,
                 selectedOptionId,
@@ -431,7 +446,7 @@ function createEditorView({
         columnsContainer.innerHTML = '';
         const project = model.getActiveProjectData();
         if (!project) {
-            columnsContainer.innerHTML = '<p style="padding: 20px; text-align: center;">Error: No project selected or data corrupted.</p>';
+            columnsContainer.innerHTML = '<p class="empty-project-message">Error: No project selected or data corrupted.</p>';
             return;
         }
 
@@ -464,11 +479,13 @@ function createEditorView({
         deleteColumnButton.disabled = !canDelete;
 
         if (promptButton) {
-            promptButton.textContent = `Prompt ${model.getColumnData(columnIndex)?.prompt ? '📝' : ''}`;
+            promptButton.textContent = 'Prompt';
+            promptButton.classList.toggle('has-prompt', Boolean(model.getColumnData(columnIndex)?.prompt));
             promptButton.disabled = !isAiReady();
         }
         if (globalPromptButton) {
-            globalPromptButton.textContent = `Global Prompt ${model.getGlobalPromptData() ? '📝' : ''}`;
+            globalPromptButton.textContent = 'Global Prompt';
+            globalPromptButton.classList.toggle('has-prompt', Boolean(model.getGlobalPromptData()));
             globalPromptButton.disabled = !isAiReady();
         }
     }
@@ -491,7 +508,7 @@ function createEditorView({
     function setInteractionLocked(locked) {
         document.body.classList.toggle('ai-busy', locked);
         if (locked) {
-            columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn, .save-option-btn, .add-sibling-btn, .use-option-btn, .delete-option-btn').forEach(button => {
+            columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn, .save-card-option-btn, .add-sibling-btn, .use-option-btn, .delete-option-btn').forEach(button => {
                 button.disabled = true;
                 button.classList.add('disabled-by-ai');
             });
@@ -621,8 +638,8 @@ function createEditorView({
             item.innerHTML = `
                 <span class="project-title" title="${project.title}">${project.title}</span>
                 <div class="project-actions">
-                    <button class="export-project-btn" title="Export Project">📤</button>
-                    <button class="delete-project-btn" title="Delete Project">🗑️</button>
+                    <button class="export-project-btn" title="Export Project" aria-label="Export Project">${iconMarkup('export')}</button>
+                    <button class="delete-project-btn" title="Delete Project" aria-label="Delete Project">${iconMarkup('delete')}</button>
                 </div>
             `;
             item.addEventListener('click', event => {
@@ -689,7 +706,11 @@ function createEditorView({
     function handleTextareaFocus(event) {
         const cardElement = event.target.closest('.card');
         if (!cardElement) return;
-        if (mode === 'document') focusedDocumentCardId = cardElement.dataset.cardId;
+        if (mode === 'document') {
+            focusedDocumentCardId = cardElement.dataset.cardId;
+            selectedOptionId = model.getOptionsForCard(focusedDocumentCardId)[0]?.id || null;
+            renderHistoryPane();
+        }
         cardElement.classList.add('editing');
         dom.scrollHierarchy(cardElement.dataset.cardId);
         dom.highlightHierarchy(cardElement.dataset.cardId);
@@ -812,7 +833,7 @@ function createEditorView({
     }
 
     function optionCreated(cardId, option) {
-        if (mode !== 'document' || cardId !== documentOwnerCardId) return;
+        if (mode !== 'document' || cardId !== focusedDocumentCardId) return;
         selectedOptionId = option.id;
         renderHistoryPane();
     }
@@ -848,6 +869,5 @@ export {
     getCardDisplayName,
     getGroupPresentation,
     getHierarchyDepth,
-    getHistorySelection,
-    shouldOpenDocumentFromCardClick
+    getHistorySelection
 };

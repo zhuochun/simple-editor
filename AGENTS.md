@@ -12,6 +12,10 @@ Before changing Simple Editor, read the current [domain](docs/domain.md), [data 
 - Keep AI placement and lifecycle policy in `aiWorkflow.js` and provider request construction in `aiService.js`.
 - Do not use a remote AI provider in routine automated tests or commit credentials.
 
+## Local development server
+
+- From the repository root, run `npx serve`, then open the address it prints in the browser.
+
 ## Required checks
 
 - Run the narrow affected tests while editing and `npm test` before handoff.

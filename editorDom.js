@@ -33,54 +33,90 @@ function createEditorDom({
 
     function scrollHierarchy(cardId) {
         const cardElement = getCardElement(cardId);
-        if (!cardElement) return;
+        const focusedCard = projectState.getCard(cardId);
+        if (!cardElement || !focusedCard) return;
 
-        const scrolledContainers = new Set();
-        const scrollToTarget = (container, targetElement, center = true, scrollToTopIfTaller = false) => {
-            if (!container || !targetElement || scrolledContainers.has(container)) return;
-
-            const containerRect = container.getBoundingClientRect();
-            const elementRect = targetElement.getBoundingClientRect();
-            const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
-            let targetScroll = relativeTop;
-            if (!(scrollToTopIfTaller && elementRect.height > window.innerHeight) && center) {
-                targetScroll = relativeTop - (container.clientHeight / 2) + (elementRect.height / 2);
-            }
-            container.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
-            scrolledContainers.add(container);
+        const getScrollContainer = element => (
+            element?.closest('.column')?.querySelector('.cards-container') || null
+        );
+        const scrollTargets = new Map();
+        const queueAlignment = (element, desiredViewportTop) => {
+            const container = getScrollContainer(element);
+            if (!container || !element || scrollTargets.has(container)) return;
+            scrollTargets.set(container, { element, desiredViewportTop });
         };
 
-        scrollToTarget(
-            cardElement.closest('.column')?.querySelector('.cards-container'),
-            cardElement,
-            true
-        );
+        const focusedContainer = getScrollContainer(cardElement);
+        if (!focusedContainer) return;
+        const focusedContainerRect = focusedContainer.getBoundingClientRect();
+        const focusedRect = cardElement.getBoundingClientRect();
+        const ancestorAlignments = [];
+        let ancestorCard = focusedCard;
+        let ancestorElement = cardElement;
+        let cumulativeAncestorOffset = 0;
+        while (ancestorCard.parentId) {
+            const siblingGroup = ancestorElement.closest('.card-group');
+            const parentCard = projectState.getCard(ancestorCard.parentId);
+            const parentElement = getCardElement(ancestorCard.parentId);
+            if (!siblingGroup || !parentCard || !parentElement) break;
 
-        for (const ancestorId of projectState.getAncestorIds(cardId)) {
-            const ancestorElement = getCardElement(ancestorId);
-            scrollToTarget(
-                ancestorElement?.closest('.column')?.querySelector('.cards-container'),
-                ancestorElement,
-                true
+            cumulativeAncestorOffset += ancestorElement.getBoundingClientRect().top
+                - siblingGroup.getBoundingClientRect().top;
+            ancestorAlignments.push({
+                element: parentElement,
+                offsetFromFocusedCard: cumulativeAncestorOffset
+            });
+            ancestorCard = parentCard;
+            ancestorElement = parentElement;
+        }
+
+        const preferredFocusedTop = focusedContainerRect.top + (focusedContainer.clientHeight * 0.3);
+        const earliestAncestorVisibleTop = focusedContainerRect.top
+            + 16
+            + cumulativeAncestorOffset;
+        const latestFullyVisibleTop = focusedContainerRect.top
+            + Math.max(0, focusedContainer.clientHeight - focusedRect.height - 24);
+        const focusedViewportTop = Math.min(
+            Math.max(preferredFocusedTop, earliestAncestorVisibleTop),
+            latestFullyVisibleTop
+        );
+        queueAlignment(cardElement, focusedViewportTop);
+
+        for (const alignment of ancestorAlignments) {
+            queueAlignment(
+                alignment.element,
+                focusedViewportTop - alignment.offsetFromFocusedCard
             );
         }
 
-        const descendantIds = projectState.getDescendantIds(cardId);
-        for (const currentId of [cardId, ...descendantIds]) {
-            const card = projectState.getCard(currentId);
-            const groupElement = getGroupElement(currentId);
-            if (!card || !groupElement) continue;
+        let branchCard = focusedCard;
+        let branchDesiredTop = focusedViewportTop;
+        const visitedBranchIds = new Set();
+        while (branchCard && !visitedBranchIds.has(branchCard.id)) {
+            visitedBranchIds.add(branchCard.id);
+            const childGroup = getGroupElement(branchCard.id);
+            if (!childGroup) break;
+            queueAlignment(childGroup, branchDesiredTop);
 
-            const groupColumn = groupElement.closest('.column');
-            const groupColumnIndex = groupColumn ? Number.parseInt(groupColumn.dataset.columnIndex, 10) : -1;
-            if (groupColumnIndex === card.columnIndex + 1) {
-                scrollToTarget(
-                    groupColumn.querySelector('.cards-container'),
-                    groupElement,
-                    true,
-                    true
-                );
-            }
+            const firstChild = projectState.getChildCards(branchCard.id, branchCard.columnIndex + 1)[0];
+            const firstChildElement = firstChild ? getCardElement(firstChild.id) : null;
+            if (!firstChild || !firstChildElement) break;
+
+            const firstChildOffset = firstChildElement.getBoundingClientRect().top
+                - childGroup.getBoundingClientRect().top;
+            branchDesiredTop += firstChildOffset;
+            branchCard = firstChild;
+        }
+
+        for (const [container, { element, desiredViewportTop }] of scrollTargets) {
+            const containerRect = container.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            const relativeTop = elementRect.top - containerRect.top + container.scrollTop;
+            const desiredTopInsideContainer = desiredViewportTop - containerRect.top;
+            container.scrollTo({
+                top: Math.max(0, relativeTop - desiredTopInsideContainer),
+                behavior: 'smooth'
+            });
         }
     }
 
@@ -109,8 +145,9 @@ function createEditorDom({
         const textarea = getCardElement(cardId)?.querySelector('textarea.card-content');
         if (!textarea) return;
 
+        const documentPane = textarea.closest('.document-current');
         textarea.style.display = '';
-        textarea.focus();
+        textarea.focus(documentPane ? { preventScroll: true } : undefined);
         requestAnimationFrame(() => {
             try {
                 if (typeof position === 'number') {
@@ -124,7 +161,11 @@ function createEditorDom({
             } catch (error) {
                 console.error(`Error setting selection range for card ${cardId}:`, error);
             }
-            scrollHierarchy(cardId);
+            if (documentPane) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+            } else {
+                scrollHierarchy(cardId);
+            }
             highlightHierarchy(cardId);
         });
         console.log(`Focused card ${cardId}, position: ${position}`);

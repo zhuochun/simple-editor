@@ -14,14 +14,17 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="favicon.ico" />
 
-    <link rel="preconnect" href="https://rsms.me/">
-    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
 </head>
 <body>
     <div id="sidebar">
         <div class="sidebar-top-actions">
-            <button id="import-project-btn" title="Import Project">📥</button>
-            <button id="add-project-btn" title="Add New Project">➕ New Project</button>
+            <button id="import-project-btn" title="Import Project" aria-label="Import Project">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"/></svg>
+            </button>
+            <button id="add-project-btn" title="Add New Project">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+                <span>New Project</span>
+            </button>
         </div>
         <div id="project-list">
             <!-- Project list will be populated here -->

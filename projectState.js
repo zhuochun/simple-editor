@@ -420,24 +420,41 @@ function getOptionsForCard(cardId) {
         .sort(compareOptionHistory);
 }
 
-function captureSiblingSnapshot(cardId, cardOverride = null) {
-    const owner = getCard(cardId);
-    if (!owner) return null;
+function captureCardSnapshot(cardId, cardOverride = null) {
+    const card = getCard(cardId);
+    if (!card) return null;
 
-    const cards = getSiblingCards(cardId).map(card => {
-        const isOverrideTarget = card.id === cardId && cardOverride;
-        return {
+    return {
+        cards: [{
             id: card.id,
-            name: isOverrideTarget && Object.hasOwn(cardOverride, 'name')
+            name: cardOverride && Object.hasOwn(cardOverride, 'name')
                 ? cardOverride.name
                 : (card.name ?? null),
-            content: isOverrideTarget && Object.hasOwn(cardOverride, 'content')
+            content: cardOverride && Object.hasOwn(cardOverride, 'content')
                 ? cardOverride.content
                 : (card.content ?? ''),
             order: card.order
-        };
-    });
-    return { cards };
+        }]
+    };
+}
+
+function getOptionOwnerSnapshotCard(option) {
+    return option?.snapshot?.cards?.find(card => card.id === option.cardId) || null;
+}
+
+function getCardRevisionHash(card) {
+    if (!card) return null;
+    return JSON.stringify([card.name ?? null, card.content ?? '']);
+}
+
+function getMatchingOptionForCard(projectData, card) {
+    const currentHash = getCardRevisionHash(card);
+    return Object.values(projectData.options)
+        .filter(option => (
+            option.cardId === card.id
+            && getCardRevisionHash(getOptionOwnerSnapshotCard(option)) === currentHash
+        ))
+        .sort(compareOptionHistory)[0] || null;
 }
 
 function addOptionRecord(cardId, source, snapshot) {
@@ -468,10 +485,21 @@ function createOptionData(cardId, source = 'Manual', cardOverride = null) {
     }
 
     return withProjectTransaction(() => {
-        const snapshot = captureSiblingSnapshot(cardId, cardOverride);
+        const snapshot = captureCardSnapshot(cardId, cardOverride);
+        const snapshotCard = snapshot?.cards?.[0] || null;
+        const matchingOption = source === 'Manual'
+            ? getMatchingOptionForCard(getActiveProjectData(), snapshotCard)
+            : null;
+        if (matchingOption) {
+            return {
+                success: true,
+                option: JSON.parse(JSON.stringify(matchingOption)),
+                created: false
+            };
+        }
         const option = addOptionRecord(cardId, source, snapshot);
         return option
-            ? { success: true, option: JSON.parse(JSON.stringify(option)) }
+            ? { success: true, option: JSON.parse(JSON.stringify(option)), created: true }
             : { success: false, reason: 'option-create-failed' };
     });
 }
@@ -515,18 +543,7 @@ function getOptionUseAvailability(optionId) {
     const owner = getCard(option.cardId);
     if (!owner) return { available: false, reason: 'missing-owner' };
 
-    const snapshotIds = new Set(option.snapshot.cards.map(card => card.id));
-    for (const snapshotCard of option.snapshot.cards) {
-        const liveCard = getCard(snapshotCard.id);
-        if (liveCard && (liveCard.parentId !== owner.parentId || liveCard.columnIndex !== owner.columnIndex)) {
-            return { available: false, reason: 'cross-scope-card', cardId: snapshotCard.id };
-        }
-    }
-    for (const sibling of getSiblingCards(owner.id)) {
-        if (!snapshotIds.has(sibling.id) && getChildCards(sibling.id).length > 0) {
-            return { available: false, reason: 'document-scope-descendants', cardId: sibling.id };
-        }
-    }
+    if (!getOptionOwnerSnapshotCard(option)) return { available: false, reason: 'missing-owner-snapshot' };
     return { available: true };
 }
 
@@ -538,44 +555,33 @@ function useOptionAsCurrentData(optionId) {
         const projectData = getActiveProjectData();
         const option = projectData.options[optionId];
         const owner = projectData.cards[option.cardId];
-        const outgoingSnapshot = captureSiblingSnapshot(owner.id);
-        const outgoingOption = addOptionRecord(owner.id, 'Manual', outgoingSnapshot);
-        if (!outgoingOption) return { success: false, reason: 'outgoing-option-failed' };
-
-        const snapshotIds = new Set(option.snapshot.cards.map(card => card.id));
-        for (const sibling of [...getSiblingCards(owner.id)]) {
-            if (!snapshotIds.has(sibling.id)) deleteCardData(sibling.id);
+        const snapshotCard = getOptionOwnerSnapshotCard(option);
+        if (getCardRevisionHash(owner) === getCardRevisionHash(snapshotCard)) {
+            return {
+                success: true,
+                optionId,
+                outgoingOptionId: null,
+                focusCardId: owner.id,
+                changed: false
+            };
         }
 
-        for (const snapshotCard of option.snapshot.cards) {
-            let liveCard = projectData.cards[snapshotCard.id];
-            if (!liveCard) {
-                liveCard = {
-                    id: snapshotCard.id,
-                    name: snapshotCard.name ?? null,
-                    content: snapshotCard.content ?? '',
-                    parentId: owner.parentId,
-                    columnIndex: owner.columnIndex,
-                    order: snapshotCard.order,
-                    color: ''
-                };
-                projectData.cards[liveCard.id] = liveCard;
-            } else {
-                liveCard.name = snapshotCard.name ?? null;
-                liveCard.content = snapshotCard.content ?? '';
-                liveCard.order = snapshotCard.order;
-            }
+        let outgoingOption = null;
+        if (!getMatchingOptionForCard(projectData, owner)) {
+            const outgoingSnapshot = captureCardSnapshot(owner.id);
+            outgoingOption = addOptionRecord(owner.id, 'Manual', outgoingSnapshot);
+            if (!outgoingOption) return { success: false, reason: 'outgoing-option-failed' };
         }
 
-        for (const sibling of getSiblingCards(owner.id)) {
-            sibling.color = getColorForCard(sibling);
-        }
+        owner.name = snapshotCard.name ?? null;
+        owner.content = snapshotCard.content ?? '';
         markProjectChanged();
         return {
             success: true,
             optionId,
-            outgoingOptionId: outgoingOption.id,
-            focusCardId: owner.id
+            outgoingOptionId: outgoingOption?.id || null,
+            focusCardId: owner.id,
+            changed: true
         };
     });
 }

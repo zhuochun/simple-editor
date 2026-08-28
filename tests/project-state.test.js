@@ -150,7 +150,7 @@ test('derived hierarchy colors keep a root hue and lighten by depth', async () =
     assert.equal(grandchildLightness, childLightness + 2);
 });
 
-test('manual and AI options capture immutable direct sibling snapshots in stable order', async () => {
+test('manual and AI options capture immutable owner Card alternatives', async () => {
     const { data, storage } = await loadDataModule('options-create');
     const first = data.addCardData(0, null, 'First');
     const second = data.addCardData(0, null, 'Second');
@@ -158,15 +158,34 @@ test('manual and AI options capture immutable direct sibling snapshots in stable
     const writesBefore = storage.writeCount;
 
     const manual = data.createOptionData(first.id, 'Manual');
+    const writesAfterManual = storage.writeCount;
+    const lastModifiedAfterManual = data.getProject(data.getActiveProjectId()).lastModified;
+    const originalDateNow = Date.now;
+    let repeatedManual;
+    try {
+        Date.now = () => lastModifiedAfterManual + 1000;
+        repeatedManual = data.createOptionData(first.id, 'Manual');
+    } finally {
+        Date.now = originalDateNow;
+    }
+    const writesAfterRepeatedManual = storage.writeCount;
+    const lastModifiedAfterRepeatedManual = data.getProject(data.getActiveProjectId()).lastModified;
     const ai = data.createOptionData(first.id, 'AI', { content: 'Alternative first' });
 
     assert.equal(manual.success, true);
+    assert.equal(manual.created, true);
+    assert.equal(repeatedManual.success, true);
+    assert.equal(repeatedManual.created, false);
+    assert.equal(repeatedManual.option.id, manual.option.id);
+    assert.equal(writesAfterRepeatedManual, writesAfterManual);
+    assert.equal(lastModifiedAfterRepeatedManual, lastModifiedAfterManual);
     assert.equal(ai.success, true);
+    assert.equal(ai.created, true);
     assert.equal(storage.writeCount, writesBefore + 2);
     assert.deepEqual(manual.option.snapshot.cards, [
-        { id: first.id, name: null, content: 'First', order: first.order },
-        { id: second.id, name: null, content: 'Second', order: second.order }
+        { id: first.id, name: null, content: 'First', order: first.order }
     ]);
+    assert.equal(manual.option.snapshot.cards.some(card => card.id === second.id), false);
     assert.equal(manual.option.snapshot.cards.some(card => card.id === child.id), false);
     assert.equal(ai.option.snapshot.cards[0].content, 'Alternative first');
     assert.equal(data.getCard(first.id).content, 'First');
@@ -244,11 +263,17 @@ test('merge clears both histories and document merge rejects a lower card with c
     assert.deepEqual(data.getActiveProjectData(), before);
 });
 
-test('use as current preserves outgoing state and rejects cross-scope or descendant mutation', async () => {
+test('use as current replaces only its owner Card and preserves siblings and descendants', async () => {
     const { data } = await loadDataModule('options-use');
     const first = data.addCardData(0, null, 'Past first');
     const second = data.addCardData(0, null, 'Past second');
     const historical = data.createOptionData(first.id, 'Manual').option;
+    data.getActiveProjectData().options[historical.id].snapshot.cards.push({
+        id: second.id,
+        name: null,
+        content: 'Legacy sibling snapshot',
+        order: second.order
+    });
     data.updateCardContentData(first.id, 'Current first');
     data.updateCardContentData(second.id, 'Current second');
 
@@ -256,7 +281,7 @@ test('use as current preserves outgoing state and rejects cross-scope or descend
 
     assert.equal(used.success, true);
     assert.equal(data.getCard(first.id).content, 'Past first');
-    assert.equal(data.getCard(second.id).content, 'Past second');
+    assert.equal(data.getCard(second.id).content, 'Current second');
     assert.equal(data.getOption(historical.id).snapshot.cards[0].content, 'Past first');
     assert.ok(data.getOptionsForCard(first.id).some(option => (
         option.source === 'Manual'
@@ -265,25 +290,63 @@ test('use as current preserves outgoing state and rejects cross-scope or descend
 
     const current = data.createOptionData(first.id, 'Manual').option;
     data.moveCardData(second.id, 1, first.id, null);
-    const beforeCrossScope = structuredClone(data.getActiveProjectData());
-    const crossScope = data.useOptionAsCurrentData(current.id);
-    assert.equal(crossScope.success, false);
-    assert.equal(crossScope.reason, 'cross-scope-card');
-    assert.deepEqual(data.getActiveProjectData(), beforeCrossScope);
+    const child = data.addCardData(1, first.id, 'Child');
+    const siblingPlacement = structuredClone(data.getCard(second.id));
+    const childState = structuredClone(data.getCard(child.id));
 
-    const third = data.addCardData(0, null, 'Third');
-    const withoutThird = data.createOptionData(first.id, 'Manual').option;
-    data.deleteOptionData(withoutThird.id);
-    const optionWithoutThird = data.createOptionData(first.id, 'Manual').option;
-    data.getActiveProjectData().options[optionWithoutThird.id].snapshot.cards = [
-        data.getActiveProjectData().options[optionWithoutThird.id].snapshot.cards[0]
-    ];
-    data.addCardData(1, third.id, 'Third child');
-    const beforeDescendants = structuredClone(data.getActiveProjectData());
-    const descendantRemoval = data.useOptionAsCurrentData(optionWithoutThird.id);
-    assert.equal(descendantRemoval.success, false);
-    assert.equal(descendantRemoval.reason, 'document-scope-descendants');
-    assert.deepEqual(data.getActiveProjectData(), beforeDescendants);
+    const reused = data.useOptionAsCurrentData(current.id);
+
+    assert.equal(reused.success, true);
+    assert.deepEqual(data.getCard(second.id), siblingPlacement);
+    assert.deepEqual(data.getCard(child.id), childState);
+});
+
+test('use as current saves only an outgoing Current not already represented in History', async () => {
+    const { data, storage } = await loadDataModule('options-use-deduplicate');
+    const card = data.addCardData(0, null, 'First option');
+    const first = data.createOptionData(card.id, 'Manual').option;
+    data.updateCardContentData(card.id, 'Second option');
+    const second = data.createOptionData(card.id, 'Manual').option;
+
+    assert.equal(data.getOptionsForCard(card.id).length, 2);
+
+    const firstUse = data.useOptionAsCurrentData(first.id);
+    const writesAfterFirstUse = storage.writeCount;
+    const lastModifiedAfterFirstUse = data.getProject(data.getActiveProjectId()).lastModified;
+    const originalDateNow = Date.now;
+    let repeatedUse;
+    try {
+        Date.now = () => lastModifiedAfterFirstUse + 1000;
+        repeatedUse = data.useOptionAsCurrentData(first.id);
+    } finally {
+        Date.now = originalDateNow;
+    }
+    const writesAfterRepeatedUse = storage.writeCount;
+    const lastModifiedAfterRepeatedUse = data.getProject(data.getActiveProjectId()).lastModified;
+    const secondUse = data.useOptionAsCurrentData(second.id);
+
+    assert.equal(firstUse.success, true);
+    assert.equal(firstUse.changed, true);
+    assert.equal(firstUse.outgoingOptionId, null);
+    assert.equal(repeatedUse.success, true);
+    assert.equal(repeatedUse.changed, false);
+    assert.equal(repeatedUse.outgoingOptionId, null);
+    assert.equal(writesAfterRepeatedUse, writesAfterFirstUse);
+    assert.equal(lastModifiedAfterRepeatedUse, lastModifiedAfterFirstUse);
+    assert.equal(secondUse.success, true);
+    assert.equal(secondUse.changed, true);
+    assert.equal(secondUse.outgoingOptionId, null);
+    assert.equal(storage.writeCount, writesAfterFirstUse + 1);
+    assert.equal(data.getOptionsForCard(card.id).length, 2);
+
+    data.updateCardContentData(card.id, 'Unsaved edit');
+    const editedUse = data.useOptionAsCurrentData(first.id);
+
+    assert.equal(editedUse.success, true);
+    assert.equal(editedUse.changed, true);
+    assert.ok(editedUse.outgoingOptionId);
+    assert.equal(data.getOptionsForCard(card.id).length, 3);
+    assert.equal(data.getOption(editedUse.outgoingOptionId).snapshot.cards[0].content, 'Unsaved edit');
 });
 
 test('moving an owner or subtree preserves card-owned Option identity', async () => {
