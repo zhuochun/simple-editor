@@ -171,28 +171,48 @@ function createEditorDom({
         console.log(`Focused card ${cardId}, position: ${position}`);
     }
 
-    function createModal(title, contentHtml, submitButtonText, onSubmit, onCancel) {
+    function createModal(title, content, submitButtonText, onSubmit, onCancel) {
         document.querySelector('.modal-overlay')?.remove();
 
+        const previouslyFocused = document.activeElement;
         const overlay = document.createElement('div');
         overlay.className = 'modal-overlay';
         const modal = document.createElement('div');
         modal.className = 'modal-content';
-        modal.innerHTML = `
-            <h4>${title}</h4>
-            ${contentHtml}
-            <div class="modal-actions">
-                <button class="modal-cancel-btn">Cancel</button>
-                <button class="modal-submit-btn primary">${submitButtonText}</button>
-            </div>
-        `;
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'active-modal-title');
+
+        const heading = document.createElement('h4');
+        heading.id = 'active-modal-title';
+        heading.textContent = title;
+        modal.appendChild(heading);
+        if (content?.nodeType) modal.appendChild(content);
+        else if (typeof content === 'string' && content) {
+            const paragraph = document.createElement('p');
+            paragraph.textContent = content;
+            modal.appendChild(paragraph);
+        }
+
+        const actions = document.createElement('div');
+        actions.className = 'modal-actions';
+        const cancelButton = document.createElement('button');
+        cancelButton.type = 'button';
+        cancelButton.className = 'modal-cancel-btn';
+        cancelButton.textContent = 'Cancel';
+        const submitButton = document.createElement('button');
+        submitButton.type = 'button';
+        submitButton.className = 'modal-submit-btn primary';
+        submitButton.textContent = submitButtonText;
+        actions.append(cancelButton, submitButton);
+        modal.appendChild(actions);
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
 
-        const submitButton = modal.querySelector('.modal-submit-btn');
         const closeModal = () => {
             overlay.remove();
             document.removeEventListener('keydown', handleKeyDown);
+            previouslyFocused?.focus?.();
         };
         const cancel = () => {
             onCancel?.();
@@ -202,16 +222,28 @@ function createEditorDom({
             if (event.key === 'Escape') {
                 event.preventDefault();
                 cancel();
+            } else if (event.key === 'Tab') {
+                const focusable = Array.from(modal.querySelectorAll('button, input, textarea, select, [tabindex]:not([tabindex="-1"])'))
+                    .filter(element => !element.disabled);
+                if (!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             } else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && event.target.tagName === 'TEXTAREA') {
                 event.preventDefault();
                 submitButton.click();
             }
         };
 
-        modal.querySelector('.modal-cancel-btn').addEventListener('click', cancel);
+        cancelButton.addEventListener('click', cancel);
         submitButton.addEventListener('click', () => {
-            onSubmit(modal);
-            closeModal();
+            if (onSubmit(modal) !== false) closeModal();
         });
         overlay.addEventListener('click', event => {
             if (event.target === overlay) cancel();

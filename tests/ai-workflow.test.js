@@ -274,6 +274,10 @@ test('Option-targeting AI requests one Option without adding or overwriting a Ca
 
     workflow.continue('source');
     assert.equal(workflow.isBusy(), true);
+    assert.deepEqual(serviceArguments.placement, {
+        targetKind: 'option',
+        targetCardContent: 'Current next'
+    });
     serviceArguments.onChunk('Alternative');
     serviceArguments.onDone('Alternative next');
 
@@ -374,6 +378,7 @@ test('Map Expand appends exactly one child Card and preserves the existing child
     const harness = createCardTargetHarness({ action: 'expand' });
 
     assert.equal(harness.workflow.expand(harness.source.id), true);
+    assert.deepEqual(harness.serviceCalls[0].placement, { targetKind: 'children' });
     assert.equal(harness.serviceCalls.length, 1);
     harness.serviceCalls[0].onDone('Expanded child');
 
@@ -613,4 +618,63 @@ test('Cancelled Card generation keeps only its error placeholder and preserves p
     assert.deepEqual(harness.childOrder, ['existing-child', 'generated-1']);
     assert.equal(harness.display.failed, true);
     assert.equal(harness.workflow.isBusy(), false);
+});
+
+test('running jobs expose Cancel and failed jobs expose a working Retry', () => {
+    const source = { id: 'source', columnIndex: 0, parentId: null, content: 'Source' };
+    const next = { id: 'next', columnIndex: 0, parentId: null, content: 'Current next' };
+    const statuses = [];
+    const serviceCalls = [];
+    let cancelCount = 0;
+    const workflow = createAiWorkflow({
+        projectState: {
+            getCard: id => id === source.id ? source : (id === next.id ? next : null),
+            getSiblingCards: () => [source, next],
+            getCardContextData: () => ({}),
+            createOptionData: (cardId, optionSource, override) => ({
+                success: true,
+                option: { id: 'option-1', cardId, source: optionSource, override }
+            })
+        },
+        aiService: {
+            areAiSettingsValid: () => true,
+            generateContinuation: args => {
+                serviceCalls.push(args);
+                return {
+                    cancel() {
+                        cancelCount += 1;
+                        const error = new Error('The AI request was cancelled.');
+                        error.code = 'cancelled';
+                        args.onError(error);
+                    }
+                };
+            }
+        },
+        addCard: () => { throw new Error('Card must not be added'); },
+        view: {
+            setInteractionLocked() {},
+            setAiJobStatus: status => statuses.push(status),
+            createOptionStream: () => createStreamDisplay().stream,
+            createCardStream: () => null,
+            optionCreated() {},
+            openDocument() {},
+            updateGroupHeaderDisplay() {},
+            focusCard() {},
+            showCustomAiPrompt() {},
+            updateAiFeatureVisibility() {}
+        }
+    });
+
+    assert.equal(workflow.continue(source.id), true);
+    assert.equal(statuses[0].state, 'running');
+    statuses[0].onCancel();
+    assert.equal(cancelCount, 1);
+    assert.equal(workflow.isBusy(), false);
+    assert.equal(statuses.at(-1).state, 'error');
+
+    statuses.at(-1).onRetry();
+    assert.equal(serviceCalls.length, 2);
+    serviceCalls[1].onDone('Retry result');
+    assert.equal(statuses.at(-1).state, 'success');
+    assert.equal(typeof statuses.at(-1).onOpenHistory, 'function');
 });

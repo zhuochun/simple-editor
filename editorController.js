@@ -34,12 +34,8 @@ function initializeEditorApp() {
     const importProjectBtn = document.getElementById('import-project-btn'); // Added
     const projectListContainer = document.getElementById('project-list');
 
-    // AI Settings Elements (Passed to aiService)
-    const aiSettingsTitle = document.getElementById('ai-settings-title');
-    const aiProviderUrlInput = document.getElementById('ai-provider-url');
-    const aiModelNameInput = document.getElementById('ai-model-name');
-    const aiApiKeyInput = document.getElementById('ai-api-key');
-    const aiTemperatureInput = document.getElementById('ai-temperature');
+    const aiSettingsContainer = document.getElementById('ai-settings-container');
+    const aiJobStatus = document.getElementById('ai-job-status');
 
     // --- Constants --- (UI/Rendering related)
     const GROUP_HEADER_PREVIEW_LENGTH = 60; // Max chars for content preview in group header
@@ -52,6 +48,7 @@ function initializeEditorApp() {
         projectState: data,
         onProjectImported: handleSwitchProject
     });
+    aiService.loadAiSettings();
     const {
         autoResizeTextarea,
         clearHighlights,
@@ -73,6 +70,9 @@ function initializeEditorApp() {
         columnsContainer,
         projectListContainer,
         addProjectButton: addProjectBtn,
+        importProjectButton: importProjectBtn,
+        aiSettingsContainer,
+        aiJobStatus,
         model: {
             minColumns: data.MIN_COLUMNS,
             getActiveProjectData: data.getActiveProjectData,
@@ -116,6 +116,7 @@ function initializeEditorApp() {
         dom: {
             autoResizeTextarea,
             clearHighlights,
+            createModal,
             focusCardTextarea,
             getCardElement,
             getColumnElementByIndex,
@@ -145,6 +146,8 @@ function initializeEditorApp() {
             createOptionStream: view.createOptionStream,
             focusCard: view.focusCard,
             optionCreated: view.optionCreated,
+            openDocument: view.openDocument,
+            setAiJobStatus: view.setAiJobStatus,
             setInteractionLocked: view.setInteractionLocked,
             showCustomAiPrompt: view.showCustomAiPrompt,
             updateAiFeatureVisibility: view.updateAiFeatureVisibility,
@@ -347,49 +350,22 @@ function initializeEditorApp() {
     function handleSetColumnPrompt(columnIndex) {
         const columnData = data.getColumnData(columnIndex);
         if (!columnData) return;
-         const currentPrompt = columnData.prompt || '';
-
-         // Use the createModal helper
-         const modalTitle = `Set Prompt for Column ${columnIndex + 1}`;
-         const modalContent = `
-             <p>This prompt guides AI 'Continue' actions within this column.</p>
-             <textarea id="modal-column-prompt-input" placeholder="e.g., Write in the style of a pirate.">${currentPrompt}</textarea>
-         `; // Use a unique ID for the textarea
-
-         createModal(modalTitle, modalContent, "Save Prompt",
-             (modalElement) => { // onSubmit callback
-                 const promptInput = modalElement.querySelector('#modal-column-prompt-input');
-                 const newPrompt = promptInput.value.trim();
-                 // Use data function to update
-                 if (data.setColumnPromptData(columnIndex, newPrompt)) {
-                     // Update button indicator
-                     const columnEl = getColumnElementByIndex(columnIndex);
-                     if (columnEl) updateToolbarButtons(columnEl, columnIndex);
-                     console.log(`Column ${columnIndex} prompt updated.`);
-                 }
-             }
-             // No specific onCancel action needed beyond closing the modal
-        );
+        view.showColumnPrompt(columnIndex, columnData.prompt || '', newPrompt => {
+            if (data.setColumnPromptData(columnIndex, newPrompt)) {
+                const columnEl = getColumnElementByIndex(columnIndex);
+                if (columnEl) updateToolbarButtons(columnEl, columnIndex);
+            }
+        });
     }
 
     function handleSetGlobalPrompt() {
         const currentPrompt = data.getGlobalPromptData();
-        const modalTitle = `Set Global Prompt`;
-        const modalContent = `
-            <p>This prompt applies to the entire document.</p>
-            <textarea id="modal-global-prompt-input" placeholder="e.g., Overall writing instructions">${currentPrompt}</textarea>
-        `;
-        createModal(modalTitle, modalContent, "Save Prompt",
-            (modalElement) => {
-                const promptInput = modalElement.querySelector('#modal-global-prompt-input');
-                const newPrompt = promptInput.value.trim();
-                if (data.setGlobalPromptData(newPrompt)) {
-                    const colEl = getColumnElementByIndex(0);
-                    if (colEl) updateToolbarButtons(colEl, 0);
-                    console.log('Global prompt updated.');
-                }
+        view.showGlobalPrompt(currentPrompt, newPrompt => {
+            if (data.setGlobalPromptData(newPrompt)) {
+                const colEl = getColumnElementByIndex(0);
+                if (colEl) updateToolbarButtons(colEl, 0);
             }
-        );
+        });
     }
 
     // --- Initialization ---
@@ -420,15 +396,14 @@ function initializeEditorApp() {
         }
         // --- End Onboarding Check ---
 
-        // 2. Initialize AI Service (passes UI elements and callback)
-        aiService.initializeAiSettings({
-            providerUrlInput: aiProviderUrlInput,
-            modelNameInput: aiModelNameInput,
-            apiKeyInput: aiApiKeyInput,
-            temperatureInput: aiTemperatureInput,
-            titleElement: aiSettingsTitle,
-            updateAiFeatureVisibilityCallback: aiWorkflow.updateFeatureVisibility
+        // 2. Initialize the view-owned settings form against the service contract.
+        view.initializeAiSettings({
+            settings: aiService.getAiSettings(),
+            providerPresets: aiService.getProviderPresets(),
+            onSave: settings => aiService.saveAiSettings(settings),
+            onTest: (settings, callbacks) => aiService.testConnection(settings, callbacks)
         });
+        aiWorkflow.updateFeatureVisibility(aiService.areAiSettingsValid());
 
         // 3. Render UI based on loaded data
         renderProjectList();

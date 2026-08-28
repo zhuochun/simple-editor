@@ -16,23 +16,17 @@ All data are stored in your browser. You can export a project in plain text file
 
 ## AI Setup
 
-You need to bring your own keys, and configure them in the sidebar.
+Bring your own API key and configure it in the sidebar. Settings stay in this browser and are applied only when you choose **Save**. **Test** sends a minimal connection prompt without project content.
 
-Use any OpenAI `completions` API compatible provider, e.g. [OpenAI](https://platform.openai.com/), [OpenRouter](https://openrouter.ai/), etc.
+The built-in OpenAI preset uses the [Responses API](https://developers.openai.com/api/docs/guides/migrate-to-responses) with the latest explicit Thinking model selected for this release:
 
-Provider URL:
+- Endpoint: `https://api.openai.com/v1/responses`
+- Model: `gpt-5.6-sol`
+- Thinking effort: `medium` by default; temperature is not sent
 
-- OpenAI: https://api.openai.com/v1/completions
-- OpenRouter: https://openrouter.ai/api/v1/chat/completions
+OpenRouter remains available through Chat Completions at `https://openrouter.ai/api/v1/chat/completions`; enter a model supported by your OpenRouter account. Custom providers require an explicit Responses or Chat Completions protocol, endpoint, model, and key.
 
-Model Name:
-
-- OpenAI: `GPT-4o-mini` (From [Models](https://platform.openai.com/docs/models))
-- OpenRouter: `deepseek/deepseek-chat-v3-0324:free` (From [Models](https://openrouter.ai/models))
-
-Temperature:
-
-- A number between `0` and `2` controlling creativity. Leave empty to use the provider default.
+AI requests stream into non-destructive Card or Option destinations. The status bar lets you cancel a running request, retries failed requests, and links successful Option results to their owning Card's History.
 
 ## Run Locally
 

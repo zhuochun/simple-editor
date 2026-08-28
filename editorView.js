@@ -72,6 +72,9 @@ function createEditorView({
     columnsContainer,
     projectListContainer,
     addProjectButton,
+    importProjectButton,
+    aiSettingsContainer,
+    aiJobStatus,
     model,
     actions,
     dom,
@@ -94,11 +97,10 @@ function createEditorView({
             cardElement.style.backgroundColor = cardColor;
         }
 
-        const displayName = getCardDisplayName(cardData, cardNameMaxLength);
         const aiReady = isAiReady();
         cardElement.innerHTML = `
             <div class="card-header" draggable="${!documentMode}">
-                ${documentMode ? '' : `<span class="card-name-display" title="${displayName.full}">${displayName.visible}</span>`}
+                ${documentMode ? '' : '<span class="card-name-display"></span>'}
                 <div class="card-ai-actions ai-feature">
                     <button class="ai-continue-btn" title="Continue as next sibling" aria-label="Continue as next sibling" ${!aiReady ? 'disabled' : ''}>${iconMarkup('continue')}</button>
                     ${documentMode ? '' : `<button class="ai-expand-btn" title="Elaborate as child" aria-label="Elaborate as child" ${!aiReady ? 'disabled' : ''}>${iconMarkup('expand')}</button>`}
@@ -113,10 +115,17 @@ function createEditorView({
                     ${documentMode ? '' : `<button class="delete-card-btn" title="Delete Card" aria-label="Delete Card">${iconMarkup('delete')}</button>`}
                 </div>
             </div>
-            <textarea class="card-content" placeholder="Enter text...">${cardData.content || ''}</textarea>
+            <textarea class="card-content" placeholder="Enter text..."></textarea>
         `;
 
         const textarea = cardElement.querySelector('.card-content');
+        textarea.value = cardData.content || '';
+        const nameDisplay = cardElement.querySelector('.card-name-display');
+        if (nameDisplay) {
+            const displayName = getCardDisplayName(cardData, cardNameMaxLength);
+            nameDisplay.textContent = displayName.visible;
+            nameDisplay.title = displayName.full;
+        }
         cardElement.querySelector('.card-name-display')?.addEventListener('dblclick', () => makeCardNameEditable(cardData.id, cardElement));
         textarea.addEventListener('blur', handleTextareaBlur);
         textarea.addEventListener('focus', handleTextareaFocus);
@@ -174,7 +183,11 @@ function createEditorView({
         groupElement.className = 'card-group';
         groupElement.dataset.parentId = parentId;
         groupElement.style.setProperty('--group-color', model.getColorForCard(parentCard));
-        groupElement.innerHTML = `<div class="group-header" title="${presentation.title}">${presentation.text}</div>`;
+        const header = document.createElement('div');
+        header.className = 'group-header';
+        header.textContent = presentation.text;
+        header.title = presentation.title;
+        groupElement.appendChild(header);
         groupElement.addEventListener('dblclick', event => {
             if (event.target.closest('textarea.card-content') || event.target.closest('.card')) return;
             event.stopPropagation();
@@ -508,7 +521,7 @@ function createEditorView({
     function setInteractionLocked(locked) {
         document.body.classList.toggle('ai-busy', locked);
         if (locked) {
-            columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn, .save-card-option-btn, .add-sibling-btn, .use-option-btn, .delete-option-btn').forEach(button => {
+            columnsContainer.querySelectorAll('.add-card-btn, .delete-card-btn, .add-child-btn, .add-column-btn, .delete-column-btn, .save-card-option-btn, .add-sibling-btn, .use-option-btn, .delete-option-btn, .back-to-map-btn, .ai-feature button').forEach(button => {
                 button.disabled = true;
                 button.classList.add('disabled-by-ai');
             });
@@ -523,6 +536,10 @@ function createEditorView({
             });
             addProjectButton.disabled = true;
             addProjectButton.classList.add('disabled-by-ai');
+            if (importProjectButton) {
+                importProjectButton.disabled = true;
+                importProjectButton.classList.add('disabled-by-ai');
+            }
             return;
         }
 
@@ -540,11 +557,14 @@ function createEditorView({
         });
         if (mode === 'document') renderHistoryPane();
         else updateAllToolbarButtons();
+        updateAiFeatureVisibility(isAiReady());
     }
 
     function createCardStream(cardId, initialContent) {
         const textarea = dom.getCardElement(cardId)?.querySelector('.card-content');
         if (!textarea) return null;
+        textarea.readOnly = true;
+        textarea.setAttribute('aria-busy', 'true');
 
         return {
             append(delta) {
@@ -558,6 +578,8 @@ function createEditorView({
             },
             finish() {
                 textarea.classList.remove('ai-loading');
+                textarea.readOnly = false;
+                textarea.removeAttribute('aria-busy');
             }
         };
     }
@@ -590,29 +612,188 @@ function createEditorView({
         };
     }
 
+    function createPromptModalContent({ description, inputId, value = '', placeholder = '' }) {
+        const content = document.createElement('div');
+        const explanation = document.createElement('p');
+        explanation.textContent = description;
+        const textarea = document.createElement('textarea');
+        textarea.id = inputId;
+        textarea.placeholder = placeholder;
+        textarea.value = value;
+        content.append(explanation, textarea);
+        return content;
+    }
+
+    function showColumnPrompt(columnIndex, currentPrompt, onSave) {
+        const inputId = 'modal-column-prompt-input';
+        const content = createPromptModalContent({
+            description: 'This prompt guides AI actions whose source or destination is in this column.',
+            inputId,
+            value: currentPrompt,
+            placeholder: 'e.g., Write in the style of a pirate.'
+        });
+        dom.createModal(`Set Prompt for Column ${columnIndex + 1}`, content, 'Save Prompt', modalElement => {
+            onSave(modalElement.querySelector(`#${inputId}`).value.trim());
+        });
+    }
+
+    function showGlobalPrompt(currentPrompt, onSave) {
+        const inputId = 'modal-global-prompt-input';
+        const content = createPromptModalContent({
+            description: 'This prompt applies to every AI action in the project.',
+            inputId,
+            value: currentPrompt,
+            placeholder: 'e.g., Overall writing instructions'
+        });
+        dom.createModal('Set Global Prompt', content, 'Save Prompt', modalElement => {
+            onSave(modalElement.querySelector(`#${inputId}`).value.trim());
+        });
+    }
+
     function showCustomAiPrompt(cardId, targets, onSubmit) {
         const labels = {
             rewrite: 'Create an Option for this Card',
             next: 'Continue into the next sibling',
             children: 'Add child Cards'
         };
-        dom.createModal(
-            'Custom AI Prompt',
-            `<p>Choose where the result belongs, then describe the result. The target choice remains authoritative.</p>
-             <label for="modal-custom-target">Result target</label>
-             <select id="modal-custom-target">${targets.map(target => `<option value="${target}">${labels[target]}</option>`).join('')}</select>
-             <textarea id="modal-custom-prompt-input" placeholder="e.g., Rewrite this text in a more formal tone."></textarea>`,
-            'Submit',
-            modalElement => {
-                const userPrompt = modalElement.querySelector('#modal-custom-prompt-input').value.trim();
-                const target = modalElement.querySelector('#modal-custom-target').value;
-                if (!userPrompt) {
-                    alert('Please enter a prompt.');
-                    return;
-                }
-                onSubmit({ userPrompt, target });
+        const content = document.createElement('div');
+        const explanation = document.createElement('p');
+        explanation.textContent = 'Choose where the result belongs, then describe the result. The target choice remains authoritative.';
+        const label = document.createElement('label');
+        label.htmlFor = 'modal-custom-target';
+        label.textContent = 'Result target';
+        const select = document.createElement('select');
+        select.id = 'modal-custom-target';
+        for (const target of targets) {
+            const option = document.createElement('option');
+            option.value = target;
+            option.textContent = labels[target];
+            select.appendChild(option);
+        }
+        const textarea = document.createElement('textarea');
+        textarea.id = 'modal-custom-prompt-input';
+        textarea.placeholder = 'e.g., Rewrite this text in a more formal tone.';
+        content.append(explanation, label, select, textarea);
+
+        dom.createModal('Custom AI Prompt', content, 'Submit', modalElement => {
+            const userPrompt = modalElement.querySelector('#modal-custom-prompt-input').value.trim();
+            const target = modalElement.querySelector('#modal-custom-target').value;
+            if (!userPrompt) {
+                alert('Please enter a prompt.');
+                return false;
             }
-        );
+            onSubmit({ userPrompt, target });
+            return true;
+        });
+    }
+
+    function initializeAiSettings({ settings, providerPresets, onSave, onTest }) {
+        if (!aiSettingsContainer) return;
+        const title = aiSettingsContainer.querySelector('#ai-settings-title');
+        const provider = aiSettingsContainer.querySelector('#ai-provider');
+        const protocol = aiSettingsContainer.querySelector('#ai-protocol');
+        const providerUrl = aiSettingsContainer.querySelector('#ai-provider-url');
+        const modelName = aiSettingsContainer.querySelector('#ai-model-name');
+        const apiKey = aiSettingsContainer.querySelector('#ai-api-key');
+        const reasoningEffort = aiSettingsContainer.querySelector('#ai-reasoning-effort');
+        const advanced = aiSettingsContainer.querySelector('#ai-advanced-settings');
+        const saveButton = aiSettingsContainer.querySelector('#ai-save-settings');
+        const testButton = aiSettingsContainer.querySelector('#ai-test-settings');
+        const status = aiSettingsContainer.querySelector('#ai-settings-status');
+        let testHandle = null;
+
+        const setStatus = (message, state = '') => {
+            status.textContent = message;
+            status.dataset.state = state;
+        };
+        const syncCapabilities = () => {
+            const isCustom = provider.value === 'custom';
+            protocol.disabled = !isCustom;
+            providerUrl.disabled = !isCustom;
+            reasoningEffort.disabled = protocol.value !== 'responses';
+            if (isCustom) advanced.open = true;
+        };
+        const apply = value => {
+            provider.value = value.provider;
+            protocol.value = value.protocol;
+            providerUrl.value = value.providerUrl;
+            modelName.value = value.modelName;
+            apiKey.value = value.apiKey;
+            reasoningEffort.value = value.reasoningEffort;
+            title.classList.toggle('ready', value.isValid);
+            syncCapabilities();
+        };
+        const readDraft = () => ({
+            provider: provider.value,
+            protocol: protocol.value,
+            providerUrl: providerUrl.value,
+            modelName: modelName.value,
+            apiKey: apiKey.value,
+            reasoningEffort: reasoningEffort.value
+        });
+
+        apply(settings);
+        provider.addEventListener('change', () => {
+            const preset = providerPresets[provider.value];
+            protocol.value = preset.protocol;
+            providerUrl.value = preset.providerUrl;
+            modelName.value = preset.modelName;
+            reasoningEffort.value = 'medium';
+            syncCapabilities();
+            setStatus('Review and save these settings.');
+        });
+        protocol.addEventListener('change', syncCapabilities);
+        saveButton.addEventListener('click', () => {
+            try {
+                const saved = onSave(readDraft());
+                apply(saved);
+                updateAiFeatureVisibility(saved.isValid);
+                setStatus('AI settings saved in this browser.', 'success');
+            } catch (error) {
+                setStatus(error.message, 'error');
+            }
+        });
+        testButton.addEventListener('click', () => {
+            if (testHandle) {
+                testHandle.cancel();
+                return;
+            }
+            setStatus('Testing provider connection…');
+            testButton.textContent = 'Cancel test';
+            testHandle = onTest(readDraft(), {
+                onDone: content => {
+                    testHandle = null;
+                    testButton.textContent = 'Test';
+                    setStatus(content.trim() ? 'Connection succeeded.' : 'Connected, but the provider returned no text.', 'success');
+                },
+                onError: error => {
+                    testHandle = null;
+                    testButton.textContent = 'Test';
+                    setStatus(error.message, error.code === 'cancelled' ? '' : 'error');
+                }
+            });
+        });
+    }
+
+    function setAiJobStatus({ state = 'idle', message = '', onCancel, onRetry, onOpenHistory } = {}) {
+        if (!aiJobStatus) return;
+        aiJobStatus.hidden = state === 'idle';
+        aiJobStatus.dataset.state = state;
+        aiJobStatus.querySelector('.ai-job-message').textContent = message;
+        const actionContainer = aiJobStatus.querySelector('.ai-job-actions');
+        actionContainer.innerHTML = '';
+        for (const [label, handler] of [
+            ['Cancel', onCancel],
+            ['Retry', onRetry],
+            ['Open History', onOpenHistory]
+        ]) {
+            if (!handler) continue;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = label;
+            button.addEventListener('click', handler);
+            actionContainer.appendChild(button);
+        }
     }
 
     function updateAiFeatureVisibility(isValid) {
@@ -636,12 +817,15 @@ function createEditorView({
             item.dataset.projectId = project.id;
             item.classList.toggle('active', project.id === model.getActiveProjectId());
             item.innerHTML = `
-                <span class="project-title" title="${project.title}">${project.title}</span>
+                <span class="project-title"></span>
                 <div class="project-actions">
                     <button class="export-project-btn" title="Export Project" aria-label="Export Project">${iconMarkup('export')}</button>
                     <button class="delete-project-btn" title="Delete Project" aria-label="Delete Project">${iconMarkup('delete')}</button>
                 </div>
             `;
+            const projectTitle = item.querySelector('.project-title');
+            projectTitle.textContent = project.title;
+            projectTitle.title = project.title;
             item.addEventListener('click', event => {
                 if (!event.target.closest('button') && !event.target.closest('.project-title-input')) {
                     actions.switchProject(project.id);
@@ -845,6 +1029,7 @@ function createEditorView({
         closeDocument,
         focusCard: dom.focusCardTextarea,
         getMode: () => mode,
+        initializeAiSettings,
         insertCard,
         openDocument,
         optionCreated,
@@ -855,7 +1040,10 @@ function createEditorView({
         renderDocument,
         renderProjectList,
         setInteractionLocked,
+        setAiJobStatus,
         showCustomAiPrompt,
+        showColumnPrompt,
+        showGlobalPrompt,
         updateAiFeatureVisibility,
         updateAllToolbarButtons,
         updateGroupHeaderDisplay,

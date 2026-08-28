@@ -172,7 +172,7 @@
       "card_m95h71s2lq2l4zu3": {
         "id": "card_m95h71s2lq2l4zu3",
         "name": null,
-        "content": "Pick a Provider\n\nChoose your preferred OpenAI-compatible provider and enter the required credentials in the sidebar settings.\n\nE.g. https://openrouter.ai/\n\nCreate an account and grab the API token.",
+        "content": "Pick a Provider\n\nChoose OpenAI Responses, OpenRouter Chat Completions, or a Custom provider in the sidebar. Enter the model and API key, then use Test before Save. Test sends no project content.",
         "parentId": "card_m95h6ff05u7064cw",
         "columnIndex": 2,
         "order": 1,
@@ -181,7 +181,7 @@
       "card_m95h71s40rdvdojn": {
         "id": "card_m95h71s40rdvdojn",
         "name": null,
-        "content": "API Endpoints\n\nOpenRouter: https://openrouter.ai/api/v1/chat/completions\nOpenAI: https://api.openai.com/v1/completions",
+        "content": "API Endpoints\n\nOpenAI Responses: https://api.openai.com/v1/responses\nOpenRouter Chat Completions: https://openrouter.ai/api/v1/chat/completions",
         "parentId": "card_m95h6ff05u7064cw",
         "columnIndex": 2,
         "order": 2,
@@ -190,7 +190,7 @@
       "card_m95h71s4lsdnrsli": {
         "id": "card_m95h71s4lsdnrsli",
         "name": null,
-        "content": "Recommended Model Names\n\nFor OpenAI: Select 'GPT-4o' from the available models\nFor OpenRouter: Select 'deepseek/deepseek-chat-v3-0324:free' from the available models",
+        "content": "Recommended Model\n\nThe OpenAI preset uses gpt-5.6-sol with medium Thinking effort. Temperature is not sent. For OpenRouter or Custom providers, enter a model supported by that provider.",
         "parentId": "card_m95h6ff05u7064cw",
         "columnIndex": 2,
         "order": 3,

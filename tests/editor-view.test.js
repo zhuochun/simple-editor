@@ -15,6 +15,7 @@ function createFakeElement() {
     const queryResults = new Map();
     const children = [];
     return {
+        nodeType: 1,
         children,
         classList: { add() {}, remove() {}, toggle() {} },
         dataset: {},
@@ -24,6 +25,15 @@ function createFakeElement() {
         },
         appendChild(child) {
             children.push(child);
+        },
+        append(...items) {
+            children.push(...items);
+        },
+        setAttribute(name, value) {
+            this[name] = String(value);
+        },
+        removeAttribute(name) {
+            delete this[name];
         },
         contains() {
             return false;
@@ -235,5 +245,128 @@ test('only the explicit Map Card control enters the Document-opening path', () =
         else globalThis.document = originalDocument;
         if (originalRequestAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
         else globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    }
+});
+
+test('Card names and content are assigned as literal text instead of HTML', () => {
+    const originalDocument = globalThis.document;
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const malicious = '<img src=x onerror="globalThis.compromised=true">';
+    const card = {
+        id: 'card-safe',
+        name: malicious,
+        content: `<script>globalThis.compromised=true</script>`,
+        parentId: 'parent',
+        columnIndex: 1,
+        order: 0
+    };
+    const target = createFakeElement();
+    let renderedCard;
+    globalThis.document = {
+        body: createFakeElement(),
+        createElement: () => createFakeElement()
+    };
+    globalThis.requestAnimationFrame = callback => callback();
+
+    try {
+        const view = createEditorView({
+            columnsContainer: createFakeElement(),
+            projectListContainer: createFakeElement(),
+            addProjectButton: createFakeElement(),
+            model: {
+                getCard: id => id === card.id ? card : (id === 'parent' ? { id: 'parent', columnIndex: 0 } : null),
+                getColorForCard: () => 'white'
+            },
+            actions: {
+                addChildCard() {},
+                aiBreakdown() {},
+                aiContinue() {},
+                aiCustom() {},
+                aiExpand() {},
+                aiSummarize() {},
+                deleteCard() {},
+                updateCardContent() {}
+            },
+            dom: {
+                autoResizeTextarea() {},
+                clearHighlights() {},
+                focusCardTextarea() {},
+                getCardElement: () => renderedCard,
+                getColumnElementByIndex: () => null,
+                getGroupElement: id => id === 'parent' ? target : null,
+                highlightHierarchy() {},
+                scrollHierarchy() {},
+                scrollIntoViewIfNeeded() {}
+            },
+            isAiReady: () => true
+        });
+
+        renderedCard = view.insertCard(card, { parentId: 'parent', insertBeforeCardId: null });
+        assert.equal(renderedCard.querySelector('.card-name-display').textContent, malicious);
+        assert.equal(renderedCard.querySelector('.card-content').value, card.content);
+        assert.doesNotMatch(renderedCard.innerHTML, /onerror|<script>/i);
+    } finally {
+        if (originalDocument === undefined) delete globalThis.document;
+        else globalThis.document = originalDocument;
+        if (originalRequestAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+        delete globalThis.compromised;
+    }
+});
+
+test('AI interaction lock covers project import and Document-to-Map navigation', () => {
+    const originalDocument = globalThis.document;
+    const createLockable = () => {
+        const classes = new Set();
+        return {
+            tagName: 'BUTTON',
+            disabled: false,
+            classList: {
+                add: value => classes.add(value),
+                remove: value => classes.delete(value),
+                contains: value => classes.has(value),
+                toggle(value, force) {
+                    if (force) classes.add(value);
+                    else classes.delete(value);
+                }
+            }
+        };
+    };
+    const backToMap = createLockable();
+    const importProject = createLockable();
+    const addProject = createLockable();
+    const lockedElements = [backToMap, importProject, addProject];
+    const body = { classList: { toggle() {} } };
+    globalThis.document = {
+        body,
+        querySelectorAll: selector => selector === '.disabled-by-ai' ? lockedElements : []
+    };
+
+    try {
+        const view = createEditorView({
+            columnsContainer: {
+                querySelectorAll: selector => selector.includes('.back-to-map-btn') ? [backToMap] : []
+            },
+            projectListContainer: { querySelectorAll: () => [] },
+            addProjectButton: addProject,
+            importProjectButton: importProject,
+            model: {},
+            actions: {},
+            dom: {},
+            isAiReady: () => true
+        });
+
+        view.setInteractionLocked(true);
+        assert.equal(backToMap.disabled, true);
+        assert.equal(importProject.disabled, true);
+        assert.equal(addProject.disabled, true);
+
+        view.setInteractionLocked(false);
+        assert.equal(backToMap.disabled, false);
+        assert.equal(importProject.disabled, false);
+        assert.equal(addProject.disabled, false);
+    } finally {
+        if (originalDocument === undefined) delete globalThis.document;
+        else globalThis.document = originalDocument;
     }
 });

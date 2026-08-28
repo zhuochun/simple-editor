@@ -36,25 +36,60 @@
         <div id="ai-settings-container">
             <h3 id="ai-settings-title">AI Settings <a href="https://github.com/zhuochun/simple-editor" target="_blank" rel="noopener noreferrer" title="How to Setup AI Configurations">(Guide)</a></h3>
             <div class="ai-setting">
-                <label for="ai-provider-url">Provider URL:</label>
-                <input type="password" id="ai-provider-url" placeholder="https://.../chat/completions">
+                <label for="ai-provider">Provider</label>
+                <select id="ai-provider">
+                    <option value="openai">OpenAI · Responses</option>
+                    <option value="openrouter">OpenRouter · Chat Completions</option>
+                    <option value="custom">Custom</option>
+                </select>
             </div>
             <div class="ai-setting">
-                <label for="ai-model-name">Model Name:</label>
-                <input type="password" id="ai-model-name" placeholder="Model Name">
+                <label for="ai-model-name">Model</label>
+                <input type="text" id="ai-model-name" placeholder="gpt-5.6-sol" autocomplete="off">
             </div>
             <div class="ai-setting">
-                <label for="ai-api-key">API Key:</label>
-                <input type="password" id="ai-api-key" placeholder="Bearer Token">
+                <label for="ai-reasoning-effort">Thinking effort</label>
+                <select id="ai-reasoning-effort">
+                    <option value="none">None</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="xhigh">Extra high</option>
+                    <option value="max">Maximum</option>
+                </select>
             </div>
             <div class="ai-setting">
-                <label for="ai-temperature">Temperature:</label>
-                <input type="text" id="ai-temperature" placeholder="0.7">
+                <label for="ai-api-key">API key</label>
+                <input type="password" id="ai-api-key" placeholder="Stored only in this browser" autocomplete="off">
             </div>
+            <details id="ai-advanced-settings">
+                <summary>Advanced</summary>
+                <div class="ai-setting">
+                    <label for="ai-protocol">API protocol</label>
+                    <select id="ai-protocol">
+                        <option value="responses">Responses API</option>
+                        <option value="chat-completions">Chat Completions</option>
+                    </select>
+                </div>
+                <div class="ai-setting">
+                    <label for="ai-provider-url">Endpoint</label>
+                    <input type="url" id="ai-provider-url" placeholder="https://..." autocomplete="off">
+                </div>
+            </details>
+            <div class="ai-settings-actions">
+                <button type="button" id="ai-save-settings" class="primary">Save</button>
+                <button type="button" id="ai-test-settings">Test</button>
+            </div>
+            <p id="ai-settings-status" role="status" aria-live="polite"></p>
+            <p class="ai-privacy-note">Project context is sent only when you run an AI action. Test sends no project content.</p>
         </div>
     </div>
     <div id="resizer"></div>
     <div id="main-content">
+        <div id="ai-job-status" role="status" aria-live="polite" hidden>
+            <span class="ai-job-message"></span>
+            <div class="ai-job-actions"></div>
+        </div>
         <div id="app">
             <div class="columns-container" id="columnsContainer">
                 <!-- Columns will be dynamically generated here -->

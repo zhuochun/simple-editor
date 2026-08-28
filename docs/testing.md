@@ -21,6 +21,8 @@ The Node test suite does not contact an AI provider. It covers:
 - Drag command mapping and AI-busy rejection.
 - Card/group hierarchy and deterministic History selection policy through the editor view interface.
 - Mode-sensitive AI Option-or-Card placement, no-delete failure behavior, placeholder completion, and busy lifecycle through fake collaborators.
+- Legacy AI-settings normalization, absolute endpoint validation, OpenAI Responses request/stream parsing, OpenRouter Chat Completions compatibility, omission of temperature, and request cancellation through local fake transports.
+- AI-busy coverage for project import and Document-to-Map navigation.
 
 ## Syntax check
 
@@ -54,6 +56,7 @@ Use focused manual checks for behavior that the Node suite cannot faithfully rep
 - Responsive sidebar and column behavior.
 - Import/export dialogs and browser download effects.
 - AI configuration visibility and custom-prompt modal behavior.
+- OpenAI/OpenRouter/Custom preset changes, explicit Save and Test states, password masking, global Cancel/Retry status, read-only streaming placeholders, Option `Open History`, and literal rendering of markup-like Card/project/provider text.
 
 ## Real AI provider checks
 

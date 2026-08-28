@@ -22,218 +22,311 @@ Maintain clarity, coherence, and consistency, always respecting the discrete, ca
 // --- Constants ---
 const NONE_TEXT = 'None';
 const CARD_SEPARATOR = '\n\n---\n\n';
+const REQUEST_TIMEOUT_MS = 60_000;
+const REASONING_EFFORTS = new Set(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
+const PROVIDER_PRESETS = Object.freeze({
+    openai: Object.freeze({
+        label: 'OpenAI',
+        protocol: 'responses',
+        providerUrl: 'https://api.openai.com/v1/responses',
+        modelName: 'gpt-5.6-sol'
+    }),
+    openrouter: Object.freeze({
+        label: 'OpenRouter',
+        protocol: 'chat-completions',
+        providerUrl: 'https://openrouter.ai/api/v1/chat/completions',
+        modelName: ''
+    }),
+    custom: Object.freeze({
+        label: 'Custom',
+        protocol: 'responses',
+        providerUrl: '',
+        modelName: ''
+    })
+});
 
-// --- State ---
-let aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '', isValid: false }; // Local cache
-let uiElements = {}; // To store references to UI elements
-
-// --- Settings Management ---
-
-function loadAiSettings() {
-    const storedSettings = localStorage.getItem(AI_SERVICE_CONFIG.STORAGE_KEY_AI_SETTINGS);
-    if (storedSettings) {
-        try {
-            aiSettings = JSON.parse(storedSettings);
-            // Ensure structure compatibility
-            aiSettings.providerUrl = aiSettings.providerUrl || '';
-            aiSettings.modelName = aiSettings.modelName || '';
-            aiSettings.apiKey = aiSettings.apiKey || '';
-            aiSettings.temperature = aiSettings.temperature || '';
-        } catch (e) {
-            console.error("Error parsing AI settings from localStorage:", e);
-            aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '' };
-        }
-    } else {
-        aiSettings = { providerUrl: '', modelName: '', apiKey: '', temperature: '' };
-    }
-    aiSettings.isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
-    console.log("AI Settings Loaded:", aiSettings);
+function inferProvider(providerUrl = '') {
+    if (!providerUrl) return 'openai';
+    if (providerUrl.includes('api.openai.com')) return 'openai';
+    if (providerUrl.includes('openrouter.ai')) return 'openrouter';
+    return 'custom';
 }
 
-function saveAiSettings() {
-    // Read directly from cached values updated by blur handler
-    localStorage.setItem(AI_SERVICE_CONFIG.STORAGE_KEY_AI_SETTINGS, JSON.stringify({
-        providerUrl: aiSettings.providerUrl,
-        modelName: aiSettings.modelName,
-        apiKey: aiSettings.apiKey,
-        temperature: aiSettings.temperature
-    }));
-    aiSettings.isValid = !!(aiSettings.providerUrl && aiSettings.modelName && aiSettings.apiKey);
-    // Notify the main script to update UI visibility
-    if (typeof uiElements.updateAiFeatureVisibilityCallback === 'function') {
-        uiElements.updateAiFeatureVisibilityCallback(aiSettings.isValid);
-    }
-    // Also update the settings UI itself (specifically the title checkmark)
-    updateAiSettingsUI();
-    console.log("AI Settings Saved.");
-}
-
-function updateAiSettingsUI() {
-    if (!uiElements.providerUrlInput || !uiElements.modelNameInput || !uiElements.apiKeyInput || !uiElements.titleElement || !uiElements.temperatureInput) {
-        console.warn("AI Settings UI elements not initialized.");
-        return;
-    }
-    // Store actual value in data attribute, display masked value
-    uiElements.providerUrlInput.dataset.value = aiSettings.providerUrl || '';
-    uiElements.modelNameInput.dataset.value = aiSettings.modelName || '';
-    uiElements.apiKeyInput.dataset.value = aiSettings.apiKey || '';
-    if (uiElements.temperatureInput) {
-        uiElements.temperatureInput.dataset.value = aiSettings.temperature || '';
-        uiElements.temperatureInput.value = aiSettings.temperature || '';
-    }
-
-    uiElements.providerUrlInput.value = aiSettings.providerUrl ? '******' : '';
-    uiElements.modelNameInput.value = aiSettings.modelName ? '******' : '';
-    uiElements.apiKeyInput.value = aiSettings.apiKey ? '******' : '';
-
-    // Update title checkmark
-    uiElements.titleElement.classList.toggle('ready', aiSettings.isValid);
-}
-
-function handleAiInputFocus(event) {
-    const input = event.target;
-    input.type = 'text'; // Show actual value
-    input.value = input.dataset.value || '';
-}
-
-function handleAiInputBlur(event) {
-    const input = event.target;
-    const key = input.id === 'ai-provider-url' ? 'providerUrl' :
-                input.id === 'ai-model-name' ? 'modelName' :
-                input.id === 'ai-api-key' ? 'apiKey' :
-                input.id === 'ai-temperature' ? 'temperature' : null;
-
-    if (key) {
-        aiSettings[key] = input.value; // Update local cache
-        input.dataset.value = input.value; // Update data-value
-    }
-
-    if (input.id !== 'ai-temperature') {
-        if (input.value) {
-            input.type = 'password';
-            input.value = '******';
-        } else {
-            input.type = 'text';
-            input.value = '';
-        }
-    } else {
-        input.type = 'text';
-    }
-    saveAiSettings(); // Save on blur
-}
-
-function initializeAiSettings(elements) {
-    uiElements = elements; // Store references { providerUrlInput, modelNameInput, apiKeyInput, temperatureInput, titleElement, updateAiFeatureVisibilityCallback }
-
-    loadAiSettings();
-    updateAiSettingsUI();
-
-    if (!uiElements.providerUrlInput || !uiElements.modelNameInput || !uiElements.apiKeyInput) {
-         console.error("Missing AI input elements during initialization.");
-         return;
-    }
-
-    uiElements.providerUrlInput.addEventListener('focus', handleAiInputFocus);
-    uiElements.providerUrlInput.addEventListener('blur', handleAiInputBlur);
-    uiElements.modelNameInput.addEventListener('focus', handleAiInputFocus);
-    uiElements.modelNameInput.addEventListener('blur', handleAiInputBlur);
-    uiElements.apiKeyInput.addEventListener('focus', handleAiInputFocus);
-    uiElements.apiKeyInput.addEventListener('blur', handleAiInputBlur);
-    if (uiElements.temperatureInput) {
-        uiElements.temperatureInput.addEventListener('focus', handleAiInputFocus);
-        uiElements.temperatureInput.addEventListener('blur', handleAiInputBlur);
-    }
-
-    // Initial visibility update
-    if (typeof uiElements.updateAiFeatureVisibilityCallback === 'function') {
-        uiElements.updateAiFeatureVisibilityCallback(aiSettings.isValid);
-    }
-}
-
-function areAiSettingsValid() {
-    // Check the locally cached settings object after loading/saving
-    return aiSettings.isValid;
-}
-
-// --- Core API Call ---
-
-async function streamChatCompletion({ messages, onChunk, onError, onDone }) {
-    if (!aiSettings.isValid) {
-        onError(new Error("AI settings are incomplete. Please configure them in the sidebar."));
-        return;
-    }
-
+function getSettingsValidationError({ providerUrl, modelName, apiKey }) {
+    if (!providerUrl) return 'Provider URL is required.';
+    let parsedUrl;
     try {
-        // Use the module-level aiSettings cache
-        const response = await fetch(aiSettings.providerUrl, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${aiSettings.apiKey}`,
-                "HTTP-Referer": AI_SERVICE_CONFIG.SITE_URL,
-                "X-Title": AI_SERVICE_CONFIG.SITE_NAME,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: aiSettings.modelName,
-                messages: messages,
-                stream: true, // Enable streaming
-                ...(aiSettings.temperature ? { temperature: parseFloat(aiSettings.temperature) } : {})
-            })
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: { message: response.statusText } }));
-            throw new Error(`API Error (${response.status}): ${errorData.error?.message || 'Unknown error'}`);
-        }
-
-        if (!response.body) {
-            throw new Error("Response body is null");
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let contentAccumulator = ''; // Accumulate content across chunks
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-                break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-
-            // Process line by line for SSE
-            let lines = buffer.split('\n');
-            buffer = lines.pop() || ''; // Keep the last partial line in buffer
-
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    const dataStr = line.substring(6).trim();
-                    if (dataStr === '[DONE]') {
-                        break; // Stream finished signal
-                    }
-                    try {
-                        const data = JSON.parse(dataStr);
-                        const delta = data.choices?.[0]?.delta?.content;
-                        if (delta) {
-                            contentAccumulator += delta;
-                            onChunk(delta); // Send only the new part
-                        }
-                    } catch (e) {
-                        console.warn("Error parsing stream chunk:", e, "Data:", dataStr);
-                        // Continue processing other lines/chunks
-                    }
-                }
-            }
-        }
-        onDone(contentAccumulator); // Pass the full accumulated content when done
-
-    } catch (error) {
-        console.error("AI Service Error:", error);
-    onError(error);
+        parsedUrl = new URL(providerUrl);
+    } catch {
+        return 'Provider URL must be a complete http:// or https:// URL.';
     }
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return 'Provider URL must use http:// or https://.';
+    }
+    if (!modelName) return 'Model is required.';
+    if (!apiKey) return 'API key is required.';
+    return null;
 }
+
+function normalizeAiSettings(settings = {}) {
+    const rawUrl = typeof settings.providerUrl === 'string' ? settings.providerUrl.trim() : '';
+    const provider = PROVIDER_PRESETS[settings.provider] ? settings.provider : inferProvider(rawUrl);
+    const preset = PROVIDER_PRESETS[provider];
+    const protocol = settings.protocol === 'chat-completions' || settings.protocol === 'responses'
+        ? settings.protocol
+        : (provider === 'custom' && !rawUrl.includes('/responses') ? 'chat-completions' : preset.protocol);
+    const providerUrl = provider === 'openai'
+        ? PROVIDER_PRESETS.openai.providerUrl
+        : (provider === 'openrouter' ? PROVIDER_PRESETS.openrouter.providerUrl : rawUrl);
+    const modelName = typeof settings.modelName === 'string' && settings.modelName.trim()
+        ? settings.modelName.trim()
+        : preset.modelName;
+    const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey.trim() : '';
+    const reasoningEffort = REASONING_EFFORTS.has(settings.reasoningEffort)
+        ? settings.reasoningEffort
+        : 'medium';
+    const normalized = {
+        provider,
+        protocol: provider === 'openai' ? 'responses' : (provider === 'openrouter' ? 'chat-completions' : protocol),
+        providerUrl,
+        modelName,
+        apiKey,
+        reasoningEffort
+    };
+    return { ...normalized, isValid: getSettingsValidationError(normalized) === null };
+}
+
+function createAiError(message, code = 'provider-error') {
+    const error = new Error(message);
+    error.code = code;
+    return error;
+}
+
+function buildRequest(settings, messages) {
+    const headers = {
+        'Authorization': `Bearer ${settings.apiKey}`,
+        'Content-Type': 'application/json'
+    };
+    if (settings.provider === 'openrouter') {
+        headers['HTTP-Referer'] = AI_SERVICE_CONFIG.SITE_URL;
+        headers['X-Title'] = AI_SERVICE_CONFIG.SITE_NAME;
+    }
+
+    if (settings.protocol === 'responses') {
+        const instructions = messages
+            .filter(message => message.role === 'system')
+            .map(message => message.content)
+            .join('\n\n');
+        const input = messages
+            .filter(message => message.role !== 'system')
+            .map(message => message.content)
+            .join('\n\n');
+        return {
+            headers,
+            body: {
+                model: settings.modelName,
+                instructions,
+                input,
+                reasoning: { effort: settings.reasoningEffort },
+                store: false,
+                stream: true
+            }
+        };
+    }
+
+    return {
+        headers,
+        body: {
+            model: settings.modelName,
+            messages,
+            stream: true
+        }
+    };
+}
+
+function readProviderError(payload, fallback) {
+    return payload?.error?.message
+        || payload?.response?.error?.message
+        || payload?.message
+        || fallback;
+}
+
+function createAiService({
+    storage = globalThis.localStorage,
+    fetchImpl = globalThis.fetch,
+    setTimeoutImpl = globalThis.setTimeout,
+    clearTimeoutImpl = globalThis.clearTimeout,
+    requestTimeoutMs = REQUEST_TIMEOUT_MS
+} = {}) {
+    let aiSettings = normalizeAiSettings();
+
+    function getAiSettings() {
+        return { ...aiSettings };
+    }
+
+    function getProviderPresets() {
+        return Object.fromEntries(Object.entries(PROVIDER_PRESETS).map(([key, value]) => [key, { ...value }]));
+    }
+
+    function loadAiSettings() {
+        let parsed = {};
+        try {
+            const storedSettings = storage?.getItem(AI_SERVICE_CONFIG.STORAGE_KEY_AI_SETTINGS);
+            if (storedSettings) parsed = JSON.parse(storedSettings);
+        } catch (error) {
+            console.error('Could not read AI settings from browser storage:', error);
+        }
+        aiSettings = normalizeAiSettings(parsed);
+        return getAiSettings();
+    }
+
+    function saveAiSettings(nextSettings) {
+        const normalized = normalizeAiSettings(nextSettings);
+        const validationError = getSettingsValidationError(normalized);
+        if (validationError) throw createAiError(validationError, 'invalid-settings');
+        const persisted = {
+            provider: normalized.provider,
+            protocol: normalized.protocol,
+            providerUrl: normalized.providerUrl,
+            modelName: normalized.modelName,
+            apiKey: normalized.apiKey,
+            reasoningEffort: normalized.reasoningEffort
+        };
+        storage?.setItem(AI_SERVICE_CONFIG.STORAGE_KEY_AI_SETTINGS, JSON.stringify(persisted));
+        aiSettings = normalized;
+        return getAiSettings();
+    }
+
+    function areAiSettingsValid() {
+        return aiSettings.isValid;
+    }
+
+    function streamCompletion({ messages, settings = aiSettings, onChunk, onError, onDone }) {
+        const normalized = normalizeAiSettings(settings);
+        let cancellationReason = 'cancelled';
+        let settled = false;
+        const controller = new AbortController();
+
+        const promise = (async () => {
+            if (!normalized.isValid) {
+                throw createAiError(
+                    getSettingsValidationError(normalized) || 'AI settings are incomplete. Please configure them in the sidebar.',
+                    'invalid-settings'
+                );
+            }
+            if (typeof fetchImpl !== 'function') {
+                throw createAiError('This browser cannot make AI requests.', 'transport-unavailable');
+            }
+
+            const request = buildRequest(normalized, messages);
+            const response = await fetchImpl(normalized.providerUrl, {
+                method: 'POST',
+                headers: request.headers,
+                body: JSON.stringify(request.body),
+                signal: controller.signal
+            });
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => null);
+                throw createAiError(
+                    `API Error (${response.status}): ${readProviderError(payload, response.statusText || 'Unknown error')}`
+                );
+            }
+            if (!response.body) throw createAiError('The provider returned no response stream.');
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let content = '';
+            let streamFinished = false;
+
+            const consumeLine = line => {
+                const trimmed = line.trimEnd();
+                if (!trimmed.startsWith('data:')) return;
+                const dataText = trimmed.slice(5).trim();
+                if (!dataText) return;
+                if (dataText === '[DONE]') {
+                    streamFinished = true;
+                    return;
+                }
+
+                let event;
+                try {
+                    event = JSON.parse(dataText);
+                } catch {
+                    throw createAiError('The provider returned an invalid streaming event.', 'invalid-stream');
+                }
+                if (event.type === 'error' || event.type === 'response.failed' || event.type === 'response.incomplete') {
+                    throw createAiError(readProviderError(event, 'The provider could not complete the response.'));
+                }
+                if (event.type === 'response.completed') streamFinished = true;
+                const delta = normalized.protocol === 'responses'
+                    ? (event.type === 'response.output_text.delta' ? event.delta : '')
+                    : event.choices?.[0]?.delta?.content;
+                if (typeof delta === 'string' && delta) {
+                    content += delta;
+                    onChunk?.(delta);
+                }
+            };
+
+            while (!streamFinished) {
+                const { done, value } = await reader.read();
+                buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() || '';
+                for (const line of lines) consumeLine(line);
+                if (done) break;
+            }
+            if (buffer.trim()) consumeLine(buffer);
+            return content;
+        })();
+
+        const timeoutId = setTimeoutImpl?.(() => {
+            cancellationReason = 'timeout';
+            controller.abort();
+        }, requestTimeoutMs);
+
+        const observedPromise = promise.then(content => {
+            if (settled) return content;
+            settled = true;
+            clearTimeoutImpl?.(timeoutId);
+            onDone?.(content);
+            return content;
+        }).catch(error => {
+            if (settled) throw error;
+            settled = true;
+            clearTimeoutImpl?.(timeoutId);
+            const reported = error?.name === 'AbortError'
+                ? createAiError(
+                    cancellationReason === 'timeout'
+                        ? 'The AI request timed out after 60 seconds.'
+                        : 'The AI request was cancelled.',
+                    cancellationReason
+                )
+                : error;
+            onError?.(reported);
+            throw reported;
+        });
+        observedPromise.catch(() => {});
+
+        return {
+            cancel() {
+                if (!settled) controller.abort();
+            },
+            promise: observedPromise
+        };
+    }
+
+    function testConnection(settings, callbacks = {}) {
+        return streamCompletion({
+            messages: [
+                { role: 'system', content: 'Return only the word OK.' },
+                { role: 'user', content: 'Connection test. Do not use external context.' }
+            ],
+            settings,
+            ...callbacks
+        });
+    }
 
 // --- Helper Function for Context Gathering ---
 
@@ -261,10 +354,20 @@ function _getCardContext(snapshot = {}) {
     };
 }
 
+function getPlacementInstruction(placement = {}) {
+    if (placement.targetKind === 'option') {
+        return `The result will be saved as an immutable Option for an existing target Card. It will not create a new Card or overwrite Current.\n\n## Target Card Current Content\n\n${placement.targetCardContent || NONE_TEXT}`;
+    }
+    if (placement.targetKind === 'children') {
+        return 'The result will be added as one or more new child Cards. Existing Cards remain unchanged.';
+    }
+    return 'The result will be added as one new Card. Existing Cards remain unchanged.';
+}
+
 
 // --- AI Generation Functions ---
 
-function generateContinuation({ context: contextSnapshot, onChunk, onError, onDone }) {
+function generateContinuation({ context: contextSnapshot, placement, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
     const context = _getCardContext(contextSnapshot);
 
@@ -291,9 +394,13 @@ ${context.precedingSiblingsContent}
 
 ${context.currentCardContent}
 
-## Task: Generate Next Sibling Card
+## Result Placement
 
-Based on all the provided context, generate the text content for the *single next card* that should logically follow the "Anchor Card Content". This new card will be placed immediately after the anchor card, within the same column and under the same parent (as its next sibling).
+${getPlacementInstruction(placement)}
+
+## Task: Generate the Next Logical Content Unit
+
+Based on all the provided context, generate the single content unit that should logically follow the "Anchor Card Content". Follow the declared Result Placement exactly.
 
 Focus on:
 - **Direct Continuation:** Seamlessly continue the thought, narrative, argument, or sequence presented in the "Anchor Card Content".
@@ -301,15 +408,15 @@ Focus on:
 - **Hierarchical Relevance:** The content should remain relevant to the "Parent Card Content".
 - **Style Consistency:** Analyze and **strictly mimic the existing writing style** (considering tone, voice, vocabulary, sentence complexity, formality, pacing, etc.) evident in the Parent Card, Preceding Sibling Cards, and *especially* the Anchor Card Content. The goal is seamless stylistic integration.
 - **Adherence to Guidelines:** Follow any specific instructions or constraints mentioned in the Global and Column Prompts.
-- **Output:** Generate *only* the plain text content for the new card. Do not include any introductions, explanations, or formatting.
+- **Output:** Generate *only* the plain text result. Do not include any introductions, explanations, or formatting.
 `;
 
     messages.push({ role: "user", content: userPromptContent });
 
-    streamChatCompletion({ messages, onChunk, onError, onDone });
+    return streamCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateSummary({ context: contextSnapshot, onChunk, onError, onDone }) {
+function generateSummary({ context: contextSnapshot, placement, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
     const context = _getCardContext(contextSnapshot);
 
@@ -346,9 +453,13 @@ ${context.currentCardContent}
 
 ${context.existingChildrenContent}
 
-# Task: Generate Following Summary Card
+# Result Placement
 
-Based on all provided context, generate a **concise summary** that synthesizes the core information from *both* the "Source Card Content" and its "Existing Child Cards Content". The output becomes one new sibling immediately after the source card; it does not replace or modify the source.
+${getPlacementInstruction(placement)}
+
+# Task: Generate a Following Summary
+
+Based on all provided context, generate a **concise summary** that synthesizes the core information from *both* the "Source Card Content" and its "Existing Child Cards Content". Follow the declared Result Placement exactly and do not replace or modify the source.
 
 Focus on:
 - **Condensing Information:** Identify and extract the most critical points, arguments, or themes from the combined source and child content.
@@ -357,12 +468,12 @@ Focus on:
 - **Brevity:** The primary goal is length reduction while retaining essential meaning.
 - **Contextual Coherence:** The summary should still make sense within the sequence (considering Parent, Preceding, and Following Siblings) and adhere to Global/Column prompts.
 - **Writing Style:** Maintain the established writing style evident in the context (Source Card, Parent, Siblings), unless specific instructions dictate otherwise.
-- **Direct Output:** Output *only* the generated summary text for the new following sibling. Do not include introductions, explanations, or section titles.
+- **Direct Output:** Output *only* the generated summary text. Do not include introductions, explanations, or section titles.
  `;
 
     messages.push({ role: "user", content: userPromptContent });
 
-    streamChatCompletion({ messages, onChunk, onError, onDone });
+    return streamCompletion({ messages, onChunk, onError, onDone });
 }
 
 
@@ -413,7 +524,7 @@ Focus on:
 
     messages.push({ role: "user", content: userPromptContent });
 
-    streamChatCompletion({ messages, onChunk, onError, onDone });
+    return streamCompletion({ messages, onChunk, onError, onDone });
 }
 
 function generateExpand({ context: contextSnapshot, onChunk, onError, onDone }) {
@@ -466,10 +577,10 @@ Focus on:
 
     messages.push({ role: "user", content: userPromptContent });
 
-    streamChatCompletion({ messages, onChunk, onError, onDone });
+    return streamCompletion({ messages, onChunk, onError, onDone });
 }
 
-function generateCustom({ context: contextSnapshot, userPrompt, onChunk, onError, onDone }) {
+function generateCustom({ context: contextSnapshot, userPrompt, placement, onChunk, onError, onDone }) {
     const messages = [{ role: "system", content: AI_SERVICE_CONFIG.AI_SYSTEM_PROMPT }];
     const context = _getCardContext(contextSnapshot);
 
@@ -508,6 +619,10 @@ ${context.existingChildrenContent}
 
 ${userPrompt}
 
+# Result Placement
+
+${getPlacementInstruction(placement)}
+
 # Task: Execute Custom Instruction
 
 Carefully analyze the "User's Custom Instruction" and execute it based on the "Current Card Content" and all the surrounding context provided.
@@ -528,17 +643,29 @@ Focus on:
 
     messages.push({ role: "user", content: userPromptContent });
 
-    streamChatCompletion({ messages, onChunk, onError, onDone });
+    return streamCompletion({ messages, onChunk, onError, onDone });
 }
 
+    return {
+        areAiSettingsValid,
+        generateBreakdown,
+        generateContinuation,
+        generateCustom,
+        generateExpand,
+        generateSummary,
+        getAiSettings,
+        getProviderPresets,
+        loadAiSettings,
+        saveAiSettings,
+        testConnection
+    };
+}
 
-// Export functions or the service object if preferred
-export const aiService = {
-    initializeAiSettings,
-    areAiSettingsValid,
-    generateContinuation,
-    generateBreakdown,
-    generateExpand,
-    generateCustom,
-    generateSummary
+const aiService = createAiService();
+
+export {
+    AI_SERVICE_CONFIG,
+    createAiService,
+    normalizeAiSettings,
+    aiService
 };

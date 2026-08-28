@@ -106,12 +106,16 @@ JSON exports use this envelope:
 
 ## AI configuration and context
 
-- Users provide an OpenAI-compatible endpoint, model, API key, and optional temperature.
-- Settings are stored locally and secrets are masked when their fields are not focused.
+- The OpenAI preset uses the Responses API at `https://api.openai.com/v1/responses`, defaults to `gpt-5.6-sol`, and exposes reasoning effort instead of temperature. OpenRouter uses Chat Completions; Custom makes the protocol and endpoint explicit.
+- Settings retain the existing `writingToolAiSettings` browser-storage key. Legacy endpoint/model/key settings remain readable; a legacy temperature value is ignored and is not written by new saves.
+- Settings are stored locally, the API key remains a password field, and values change only through explicit Save. Save requires a complete `http://` or `https://` endpoint. Test sends a minimal connection prompt without project content.
 - AI actions are available only when endpoint, model, and API key are present.
 - Every AI request can use the project global prompt, current and target column prompts, parent, preceding and following siblings, source card, and direct children as appropriate.
-- Card-targeting streaming appears in a new placeholder Card. Failure leaves that Card with a visible error; AI never deletes it.
+- Starting an action exposes one global job with its status and Cancel control. While it runs, structural controls include project import and Document-to-Map navigation. A request times out after 60 seconds; cancellation, timeout, and provider failure always release those controls and expose Retry.
+- Card-targeting streaming appears in a read-only new placeholder Card. Completion or failure makes it editable again. Failure leaves that Card with a visible error; AI never deletes it.
 - Option-targeting streaming is transient presentation only. A valid non-empty completion creates one immutable Option; failure creates no Option and never overwrites Current.
+- Successful Option creation names its owner Card and offers `Open History`, including when the result owner differs from the Card currently focused in Document mode.
+- Imported, user-authored, and AI-authored Card names, content, project titles, prompts, and provider output are rendered as literal plain text rather than executable markup. API keys are not written to application logs.
 
 ## AI result placement
 
@@ -132,6 +136,12 @@ AI operations are non-destructive and the selected target, not prompt wording, c
 - `CHG-AI-CHILD-ADD` — Child-adding actions preserve existing children and remain Map-only.
 - `CHG-AI-NO-DELETE` — No AI action has Card or Option deletion capability.
 - `CHG-AI-FAILURE-NONDESTRUCTIVE` — AI failure cannot overwrite existing user content.
+- `CHG-AI-OPENAI-RESPONSES` — The OpenAI preset uses `gpt-5.6-sol`, Responses streaming, and explicit reasoning effort without temperature.
+- `CHG-AI-LEGACY-SETTINGS` — The existing settings key remains readable while obsolete temperature data is ignored.
+- `CHG-AI-LIFECYCLE` — Every request settles through success, cancellation, timeout, or failure and always unlocks the editor; failed jobs can be retried.
+- `CHG-AI-RESULT-DISCOVERY` — A created Option identifies its owner and can open that Card's History.
+- `CHG-AI-PLACEMENT-PROMPT` — Provider instructions describe the workflow-selected Card, Option, or child destination without claiming a conflicting placement.
+- `CHG-AI-SAFE-TEXT` — User, import, and provider strings render as plain text and credentials never enter application logs.
 - `CHG-IMPORT-LEGACY-V1` — Existing unversioned exports and onboarding data remain importable.
 - `CHG-IMPORT-ATOMIC` — Rejected imports have no project, selection, or persistence effects.
 - `CHG-IMPORT-NORMALIZED` — Supported legacy omissions receive deterministic defaults.
