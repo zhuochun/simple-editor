@@ -1,22 +1,26 @@
 import { createProjectExport, parseProjectExport, projectToPlainText } from './projectFormat.js';
 
+function downloadBrowserFile(content, mimeType, filename, {
+    BlobImpl = globalThis.Blob,
+    documentImpl = globalThis.document,
+    urlImpl = globalThis.URL
+} = {}) {
+    const blob = new BlobImpl([content], { type: mimeType });
+    const link = documentImpl.createElement('a');
+    link.href = urlImpl.createObjectURL(blob);
+    link.download = filename;
+    documentImpl.body.appendChild(link);
+    link.click();
+    documentImpl.body.removeChild(link);
+    urlImpl.revokeObjectURL(link.href);
+}
+
 function createProjectTransfer({
     projectState,
     onProjectImported,
     showAlert = message => globalThis.alert(message),
     fetchImpl = (...args) => globalThis.fetch(...args)
 }) {
-    function download(content, mimeType, filename) {
-        const blob = new Blob([content], { type: mimeType });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
-    }
-
     function exportFilename(project, extension) {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const safeTitle = project.title.replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -27,7 +31,7 @@ function createProjectTransfer({
         const project = projectState.getProject(projectId);
         if (!project) return false;
 
-        download(
+        downloadBrowserFile(
             projectToPlainText(project),
             'text/plain;charset=utf-8',
             exportFilename(project, 'txt')
@@ -41,7 +45,7 @@ function createProjectTransfer({
         if (!project) return false;
 
         try {
-            download(
+            downloadBrowserFile(
                 JSON.stringify(createProjectExport(project), null, 2),
                 'application/json;charset=utf-8',
                 exportFilename(project, 'json')
@@ -204,4 +208,4 @@ function createProjectTransfer({
     };
 }
 
-export { createProjectTransfer };
+export { createProjectTransfer, downloadBrowserFile };

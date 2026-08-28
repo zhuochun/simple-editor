@@ -94,14 +94,14 @@ body.sidebar-collapsed #resizer::before {
 #app {
     display: flex;
     flex-grow: 1;
-    padding: 15px;
+    padding: 8px;
     box-sizing: border-box;
     overflow: hidden; /* Crucial: Prevent app from overflowing main-content */
 }
 
 .columns-container {
     display: flex;
-    gap: 15px;
+    gap: 6px;
     flex-grow: 1;
     height: 100%; /* Take full height of #app */
     overflow-x: auto; /* Allow horizontal scrolling for columns */
@@ -294,14 +294,15 @@ body.sidebar-collapsed #resizer::before {
 /* --- Existing Column & Card Styles (mostly unchanged) --- */
 
 .column {
-    background-color: #e9ecef;
-    border-radius: 5px;
+    background-color: #eceff1;
+    border: 1px solid #dfe3e6;
+    border-radius: 3px;
     width: min(50ch, 90vw);
     flex-shrink: 0; /* Prevent columns from shrinking */
     height: 100%; /* Take full height of columns-container */
     display: flex;
     flex-direction: column;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    box-shadow: none;
     box-sizing: border-box;
 }
 
@@ -368,9 +369,10 @@ body.ai-ready .ai-feature {
 .card {
     background-color: #fff; /* Base color, will be overridden */
     border: 1px solid #ccc;
-    border-radius: 4px;
-    margin-bottom: 10px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-left: 4px solid var(--hierarchy-rail, #718096);
+    border-radius: 3px;
+    margin-bottom: 7px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
     transition: box-shadow 0.2s ease, background-color 0.3s ease;
     cursor: grab;
 }
@@ -391,7 +393,7 @@ body.ai-ready .ai-feature {
     font-size: 0.8em;
     user-select: none; /* Prevent text selection during drag */
     height: 19px; /* Fixed height for calculation */
-    gap: 8px; /* Increased gap between items */
+    gap: 5px;
 }
 
 .card-name-display {
@@ -474,6 +476,25 @@ body.dragging-cards .card {
 .card-content.ai-loading {
     font-style: italic;
     color: #555;
+}
+
+.option-stream {
+    margin: 0 10px 10px;
+    padding: 8px 10px;
+    border: 1px solid #c9d7e5;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.72);
+    color: #41566b;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+}
+.option-stream::before {
+    content: 'New Option · ';
+    font-weight: 650;
+}
+.option-stream-error {
+    border-color: #d8aaaa;
+    color: #8a3434;
 }
 
 
@@ -585,6 +606,246 @@ body.dragging-cards .card-content {
     font-size: 0.9em;
 }
 
+.modal-content select {
+    width: 100%;
+    margin: 4px 0 12px;
+    padding: 8px;
+    border: 1px solid #bbb;
+    border-radius: 3px;
+    background: #fff;
+}
+
+/* --- Document Options View --- */
+.columns-container.document-mode {
+    display: block;
+    padding: 0;
+    overflow: hidden;
+}
+
+.document-view {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    background: #f7f7f5;
+    color: #202322;
+}
+
+.document-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #dfe1dd;
+    background: rgba(255, 255, 255, 0.92);
+}
+
+.document-toolbar button,
+.history-controls button,
+.history-actions button {
+    border: 1px solid #cfd3ce;
+    border-radius: 4px;
+    background: #fff;
+    color: #303532;
+    padding: 7px 10px;
+    cursor: pointer;
+}
+
+.document-toolbar button:hover,
+.history-controls button:hover,
+.history-actions button:hover {
+    background: #f1f3ef;
+}
+
+.document-toolbar button:disabled,
+.history-controls button:disabled,
+.history-actions button:disabled {
+    opacity: 0.42;
+    cursor: not-allowed;
+}
+
+.document-identity {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.document-identity strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.document-toolbar-actions,
+.history-actions,
+.history-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.document-toolbar-actions .save-option-btn,
+.history-actions .use-option-btn {
+    background: #263b35;
+    border-color: #263b35;
+    color: #fff;
+}
+
+.document-workspace {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(420px, 1.45fr) minmax(320px, 0.85fr);
+    gap: 1px;
+    background: #dfe1dd;
+}
+
+.document-current,
+.document-history {
+    min-width: 0;
+    overflow-y: auto;
+    background: #fbfbf9;
+    padding: 28px clamp(18px, 4vw, 56px) 72px;
+    box-sizing: border-box;
+}
+
+.document-current {
+    background: #fff;
+}
+
+.document-history:focus {
+    outline: 2px solid #8aa9a0;
+    outline-offset: -2px;
+}
+
+.document-pane-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 24px;
+}
+
+.document-pane-heading h1,
+.document-pane-heading h2 {
+    margin: 2px 0 0;
+    font-size: 1.1rem;
+    line-height: 1.25;
+}
+
+.eyebrow {
+    color: #747b76;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.document-card-count,
+.option-count,
+.history-position {
+    color: #757c77;
+    font-size: 0.78rem;
+}
+
+.document-cards {
+    max-width: 72ch;
+    margin: 0 auto;
+}
+
+.document-card {
+    cursor: text;
+    margin-bottom: 2px;
+    border-top-color: transparent;
+    border-right-color: transparent;
+    border-bottom-color: #e4e7e2;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.document-card .card-header {
+    background: transparent;
+    border-bottom: 0;
+}
+
+.document-card .card-content {
+    min-height: 88px;
+    resize: vertical;
+    font-size: 1rem;
+}
+
+.columns-container:not(.document-mode) .card-content {
+    cursor: pointer;
+}
+
+.document-owner-card {
+    border-left-width: 5px;
+}
+
+.document-owner-card .card-name-display {
+    color: #344b43;
+    font-weight: 650;
+}
+
+.document-owner-card .card-name-display::after {
+    content: 'owner';
+    margin-left: 7px;
+    padding: 1px 5px;
+    border: 1px solid rgba(52, 75, 67, 0.25);
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.history-controls {
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.history-meta {
+    min-height: 1.3em;
+    margin-bottom: 14px;
+    color: #707772;
+    font-size: 0.78rem;
+}
+
+.history-preview {
+    display: grid;
+    gap: 2px;
+    margin-bottom: 18px;
+}
+
+.history-card {
+    border-left: 3px solid #9da8a1;
+    border-bottom: 1px solid #e4e6e2;
+    background: #f5f6f3;
+    padding: 10px 12px 14px;
+}
+
+.history-card-name {
+    margin-bottom: 6px;
+    color: #7a817c;
+    font-size: 0.72rem;
+    font-weight: 650;
+}
+
+.history-card-content {
+    color: #4b514d;
+    font-family: Georgia, serif;
+    line-height: 1.65;
+    white-space: pre-wrap;
+}
+
+.empty-history,
+.history-status {
+    color: #747b76;
+    font-size: 0.82rem;
+}
+
+.history-status {
+    min-height: 1.4em;
+}
+
 .modal-actions {
     text-align: right;
 }
@@ -671,5 +932,27 @@ body.dragging-cards .card-content {
     }
     body.sidebar-collapsed #resizer {
         width: 20px;
+    }
+}
+
+@media (max-width: 900px) {
+    .document-toolbar {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+    .document-toolbar-actions {
+        grid-column: 1 / -1;
+    }
+    .document-workspace {
+        display: block;
+        overflow-y: auto;
+        background: #fff;
+    }
+    .document-current,
+    .document-history {
+        overflow: visible;
+    }
+    .document-history {
+        border-top: 1px solid #dfe1dd;
+        background: #f7f7f5;
     }
 }

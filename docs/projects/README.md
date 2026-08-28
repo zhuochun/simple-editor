@@ -1,6 +1,6 @@
 # Project Documents
 
-These documents preserve how completed changes were originally specified or described. They are historical records, not the authority for current behavior or architecture.
+These documents preserve how proposed or completed changes were specified or described. Proposed projects are decision records under review; completed projects are historical records. Neither is the authority for current behavior or architecture.
 
 Current authorities:
 
@@ -20,6 +20,7 @@ Current authorities:
 | V5 | [Onboarding and import/export](v5-onboarding-import-export.md) | Implemented historical project | — |
 | V6 | [Global and column prompts](v6-global-column-prompts.md) | Implemented historical project | — |
 | V7 | [Editor module boundaries](v7-editor-module-boundaries.md) | Implemented project | — |
+| V8 | [Document Options View](v8-evolution-view.md) | Implemented and verified project | [Execution evidence](v8-execution-log.md) |
 
 The `-as-built` suffix identifies a companion reconstructed from the implementation. It is not an implementation plan and may contain lower-level details that have since changed.
 

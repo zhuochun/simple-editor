@@ -18,7 +18,7 @@ The core data structure is a single JavaScript object named `projects`, which ac
 *   **Active Project Key:** `ACTIVE_PROJECT_ID_KEY` (defaults to `'writingToolActiveProjectId'`)
     *   Stores the `id` (string) of the currently active project.
 
-JSON project exports wrap a project title and data in a versioned envelope. An absent `schemaVersion` is treated as legacy version 1; new exports write `schemaVersion: 1`.
+JSON project exports wrap a project title and data in a versioned envelope. An absent `schemaVersion` is treated as legacy version 1; new exports write `schemaVersion: 2`. Version 1 has no Options contract and normalizes `data.options` to `{}`.
 
 ## Schema Details
 
@@ -84,7 +84,8 @@ Here's the breakdown of the nested data structures:
     {
       "columns": [ /* Array of Column Objects */ ],
       "cards": { /* Dictionary of Card Objects */ },
-      "globalPrompt": ""
+      "globalPrompt": "",
+      "options": { /* Dictionary of Option Objects */ }
     }
     ```
 *   **Properties:**
@@ -100,6 +101,9 @@ Here's the breakdown of the nested data structures:
     *   `globalPrompt`:
         *   **Type:** `String`
         *   **Description:** Project-wide guidance included in AI context. Legacy imports default it to an empty string.
+    *   `options`:
+        *   **Type:** `Object` (Dictionary/Map)
+        *   **Description:** Immutable sibling-document snapshots keyed by Option ID. Each record resolves to one live owner through `option.cardId`; Cards never embed Options. Legacy version-1 input defaults it to an empty object.
 
 ---
 
@@ -169,8 +173,34 @@ Here's the breakdown of the nested data structures:
         *   **Example:** `0`, `1`, `1.5`, `2`
     *   `color`:
         *   **Type:** `String`
-        *   **Description:** An HSL color string calculated from hierarchy and sibling position. It is derived cache data: imports do not trust it, and rendering or project mutations recalculate it.
+        *   **Description:** An HSL color string calculated from root-branch hue and hierarchy depth. It is derived cache data: imports do not trust it, and rendering or project mutations recalculate it.
         *   **Example:** `"hsl(230, 65%, 85%)"`
+
+---
+
+### 6. `Option` Object (Value within `project.data.options` dictionary)
+
+```json
+{
+  "id": "option_abc123",
+  "cardId": "card_owner",
+  "source": "Manual",
+  "createdAt": 1701254800123,
+  "snapshot": {
+    "cards": [
+      { "id": "card_owner", "name": null, "content": "Past text", "order": 0 }
+    ]
+  }
+}
+```
+
+- The dictionary key equals `id`; IDs are stable and unique within the project.
+- `cardId` must resolve to a live Card and is the sole History ownership link.
+- `source` is `Manual` or `AI`; it records provenance, not a different Option type.
+- `createdAt` is a finite non-negative millisecond timestamp. History sorts descending by it and then descending by Option ID.
+- `snapshot.cards` contains the ordered direct siblings captured for the owner. IDs are unique, the owner appears exactly once, `name` is text or `null`, `content` is text, and `order` is finite.
+- Snapshot cards deliberately omit `parentId`, `columnIndex`, `color`, descendants, and attached Options. A captured Card may no longer be live because applying the snapshot may recreate it inside the owner's current sibling scope.
+- Unknown Option, snapshot, and snapshot-card properties are preserved on supported-version round trips and ignored by current behavior.
 
 ---
 
@@ -183,6 +213,7 @@ Here's the breakdown of the nested data structures:
 5.  **Card Placement (Column):** `card.columnIndex` links a card to a specific column index.
 6.  **Card Placement (Hierarchy):** `card.parentId` links a card to its parent (or `null` if it's a root).
 7.  **Card Placement (Vertical Order):** `card.order` sorts cards vertically within the same parent/column context.
-8.  **Uniqueness:** `projectId`s and `cardId`s must be unique across the application instance.
+8.  **Options Collection:** `project.data.options` stores historical sibling snapshots once, keyed by Option ID and linked to one owner through `cardId`.
+9.  **Uniqueness:** `projectId`s and `cardId`s must be unique across the application instance; Option IDs are unique within their project.
 
 This schema provides a flexible structure for representing hierarchical data across columns, while the flattened `cards` dictionary allows for efficient access and modification of individual cards. The use of `localStorage` makes it a purely client-side application.

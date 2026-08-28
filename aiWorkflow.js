@@ -8,53 +8,71 @@ function findNextSiblingId(cardId, siblings) {
         : null;
 }
 
-function getAiActionPlan(action, card, siblings = []) {
+function createSequentialPlan(method, card, siblings, requiresContentCheck) {
+    const nextSiblingId = findNextSiblingId(card.id, siblings);
+    if (nextSiblingId) {
+        return {
+            method,
+            targetKind: 'option',
+            targetCardId: nextSiblingId,
+            requiresContentCheck,
+            useMultiPartResponseHandler: false
+        };
+    }
+    return {
+        method,
+        targetKind: 'card',
+        targetColumnIndex: card.columnIndex,
+        parentIdForNewCards: card.parentId,
+        insertBeforeId: null,
+        requiresContentCheck,
+        useMultiPartResponseHandler: false
+    };
+}
+
+function createChildPlan(method, card, useMultiPartResponseHandler) {
+    return {
+        method,
+        targetKind: 'card',
+        targetColumnIndex: card.columnIndex + 1,
+        parentIdForNewCards: card.id,
+        insertBeforeId: null,
+        requiresContentCheck: method !== 'generateCustom',
+        useMultiPartResponseHandler
+    };
+}
+
+function getAiActionPlan(action, card, siblings = [], options = {}) {
+    const mode = options.mode || 'map';
     switch (action) {
         case 'summarize':
-            return {
-                method: 'generateSummary',
-                targetColumnIndex: card.columnIndex,
-                parentIdForNewCards: card.parentId,
-                insertBeforeId: findNextSiblingId(card.id, siblings),
-                requiresContentCheck: true,
-                useMultiPartResponseHandler: false
-            };
+            return createSequentialPlan('generateSummary', card, siblings, true);
         case 'continue':
-            return {
-                method: 'generateContinuation',
-                targetColumnIndex: card.columnIndex,
-                parentIdForNewCards: card.parentId,
-                insertBeforeId: findNextSiblingId(card.id, siblings),
-                requiresContentCheck: false,
-                useMultiPartResponseHandler: false
-            };
+            return createSequentialPlan('generateContinuation', card, siblings, false);
         case 'breakdown':
-            return {
-                method: 'generateBreakdown',
-                targetColumnIndex: card.columnIndex + 1,
-                parentIdForNewCards: card.id,
-                insertBeforeId: null,
-                requiresContentCheck: true,
-                useMultiPartResponseHandler: true
-            };
+            return mode === 'document' ? null : createChildPlan('generateBreakdown', card, true);
         case 'expand':
-            return {
-                method: 'generateExpand',
-                targetColumnIndex: card.columnIndex + 1,
-                parentIdForNewCards: card.id,
-                insertBeforeId: null,
-                requiresContentCheck: true,
-                useMultiPartResponseHandler: false
-            };
+            return mode === 'document' ? null : createChildPlan('generateExpand', card, false);
         case 'custom':
-            return {
-                method: 'generateCustom',
-                targetColumnIndex: card.columnIndex + 1,
-                parentIdForNewCards: card.id,
-                insertBeforeId: null,
-                requiresContentCheck: false,
-                useMultiPartResponseHandler: true
-            };
+            if (options.customTarget === 'rewrite') {
+                return {
+                    method: 'generateCustom',
+                    targetKind: 'option',
+                    targetCardId: card.id,
+                    requiresContentCheck: false,
+                    useMultiPartResponseHandler: false
+                };
+            }
+            if (options.customTarget === 'next') {
+                return {
+                    ...createSequentialPlan('generateCustom', card, siblings, false),
+                    useMultiPartResponseHandler: false
+                };
+            }
+            if (options.customTarget === 'children' && mode !== 'document') {
+                return createChildPlan('generateCustom', card, true);
+            }
+            return null;
         default:
             return null;
     }
@@ -64,7 +82,8 @@ function createAiWorkflow({
     projectState,
     aiService,
     addCard,
-    deleteCard,
+    getMode = () => 'map',
+    showAlert = message => globalThis.alert(message),
     view
 }) {
     let busy = false;
@@ -83,67 +102,113 @@ function createAiWorkflow({
         view.setInteractionLocked(false);
     }
 
-    function processMultiPartResponse(fullResponse, placeholderCardId, cardStream, originalCardId, targetColumnIndex, parentIdForNewCards) {
-        const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(part => part.trim()).filter(Boolean);
-        let lastCardId = null;
-
-        if (parts.length > 0) {
-            const firstPartContent = parts[0];
-            if (projectState.updateCardContentData(placeholderCardId, firstPartContent)) {
-                cardStream.replace(firstPartContent, true);
-                cardStream.finish();
-                lastCardId = placeholderCardId;
-            } else {
-                deleteCard(placeholderCardId);
-            }
-
-            if (parts.length > 1 && lastCardId) {
-                let insertAfterCardId = lastCardId;
-                parts.slice(1).forEach(partContent => {
-                    let insertBeforeId = null;
-                    if (projectState.getCard(insertAfterCardId)) {
-                        insertBeforeId = findNextSiblingId(insertAfterCardId, projectState.getSiblingCards(insertAfterCardId));
-                    }
-                    const newCardId = addCard(targetColumnIndex, parentIdForNewCards, partContent, insertBeforeId);
-                    if (newCardId) {
-                        lastCardId = newCardId;
-                        insertAfterCardId = newCardId;
-                    }
-                });
-            }
-        } else {
-            deleteCard(placeholderCardId);
-        }
-
-        view.updateGroupHeaderDisplay(parentIdForNewCards);
-        const cardIdToFocus = parts.length > 0 ? lastCardId : null;
-        if (cardIdToFocus && projectState.getCard(cardIdToFocus)) {
-            requestAnimationFrame(() => view.focusCard(cardIdToFocus, 'start'));
-        }
-        console.log(`AI Multi-Part processing completed for original card ${originalCardId}. Last created/updated card: ${lastCardId}`);
+    function writeCardError(cardId, cardStream, message) {
+        const content = 'AI Error: ' + message;
+        cardStream?.replace(content);
+        cardStream?.finish(true);
+        projectState.updateCardContentData(cardId, content);
     }
 
-    function execute(cardId, plan, userPrompt = null) {
-        if (!aiService.areAiSettingsValid()) {
-            alert('Please configure AI settings first.');
-            return;
-        }
-        if (busy) {
-            alert('Please wait for the current AI action to complete.');
+    function processMultiPartResponse(fullResponse, placeholderCardId, cardStream, originalCardId, plan) {
+        const parts = fullResponse.split(AI_RESPONSE_SEPARATOR).map(part => part.trim()).filter(Boolean);
+        if (parts.length === 0) {
+            writeCardError(placeholderCardId, cardStream, 'The provider returned an empty response.');
             return;
         }
 
-        const card = projectState.getCard(cardId);
-        if (!card) return;
-        if (plan.requiresContentCheck && !card.content?.trim()) {
-            alert(`Card #${cardId.slice(-4)} has no content for this action.`);
+        const firstPartContent = parts[0];
+        if (!projectState.updateCardContentData(placeholderCardId, firstPartContent)) {
+            writeCardError(placeholderCardId, cardStream, 'The generated Card is no longer available.');
             return;
         }
 
-        const context = projectState.getCardContextData(cardId);
-        if (!context) return;
+        cardStream.replace(firstPartContent);
+        cardStream.finish(false);
+        let lastCardId = placeholderCardId;
+        for (const partContent of parts.slice(1)) {
+            let insertBeforeId = null;
+            if (projectState.getCard(lastCardId)) {
+                insertBeforeId = findNextSiblingId(lastCardId, projectState.getSiblingCards(lastCardId));
+            }
+            const newCardId = addCard(
+                plan.targetColumnIndex,
+                plan.parentIdForNewCards,
+                partContent,
+                insertBeforeId
+            );
+            if (newCardId) lastCardId = newCardId;
+        }
 
-        disableConflictingActions();
+        view.updateGroupHeaderDisplay(plan.parentIdForNewCards);
+        if (projectState.getCard(lastCardId)) view.focusCard(lastCardId, 'start');
+        console.log('AI multi-part processing completed for ' + originalCardId + '. Last Card: ' + lastCardId);
+    }
+
+    function executeOptionTarget(cardId, plan, userPrompt) {
+        const optionStream = view.createOptionStream(plan.targetCardId, AI_PLACEHOLDER_TEXT);
+        if (!optionStream) {
+            enableConflictingActions();
+            showAlert('Could not display the generated Option.');
+            return false;
+        }
+
+        let settled = false;
+        const finishFailure = message => {
+            if (settled) return;
+            settled = true;
+            optionStream.replace('AI Error: ' + message);
+            optionStream.finish(true);
+            enableConflictingActions();
+        };
+        const finishSuccess = finalContent => {
+            if (settled) return;
+            if (typeof finalContent !== 'string' || !finalContent.trim()) {
+                finishFailure('The provider returned an empty response.');
+                return;
+            }
+
+            const result = projectState.createOptionData(
+                plan.targetCardId,
+                'AI',
+                { content: finalContent }
+            );
+            if (!result.success) {
+                finishFailure(result.reason === 'persistence-failed'
+                    ? 'The Option could not be saved.'
+                    : 'The Option could not be created.');
+                return;
+            }
+
+            settled = true;
+            optionStream.replace(finalContent);
+            optionStream.finish(false);
+            view.optionCreated?.(plan.targetCardId, result.option);
+            enableConflictingActions();
+        };
+
+        const serviceArguments = {
+            context: projectState.getCardContextData(cardId),
+            onChunk: delta => {
+                if (!settled) optionStream.append(delta);
+            },
+            onError: error => finishFailure(error.message),
+            onDone: finishSuccess
+        };
+        if (userPrompt !== null && plan.method === 'generateCustom') serviceArguments.userPrompt = userPrompt;
+
+        try {
+            if (typeof aiService[plan.method] !== 'function') {
+                throw new Error('Invalid aiService method name: ' + plan.method);
+            }
+            aiService[plan.method](serviceArguments);
+            return true;
+        } catch (error) {
+            finishFailure('AI call setup failed: ' + error.message);
+            return false;
+        }
+    }
+
+    function executeCardTarget(cardId, plan, userPrompt) {
         const placeholderCardId = addCard(
             plan.targetColumnIndex,
             plan.parentIdForNewCards,
@@ -153,91 +218,124 @@ function createAiWorkflow({
         );
         if (!placeholderCardId) {
             enableConflictingActions();
-            return;
+            return false;
         }
 
         const cardStream = view.createCardStream(placeholderCardId, AI_PLACEHOLDER_TEXT);
         if (!cardStream) {
-            projectState.updateCardContentData(placeholderCardId, 'Error: Could not find card textarea.');
+            projectState.updateCardContentData(placeholderCardId, 'AI Error: Could not display the generated Card.');
             enableConflictingActions();
-            return;
+            return false;
         }
+
+        let settled = false;
+        const finishFailure = message => {
+            if (settled) return;
+            settled = true;
+            writeCardError(placeholderCardId, cardStream, message);
+            enableConflictingActions();
+        };
+        const finishSuccess = finalContent => {
+            if (settled) return;
+            if (typeof finalContent !== 'string' || !finalContent.trim()) {
+                finishFailure('The provider returned an empty response.');
+                return;
+            }
+
+            settled = true;
+            if (plan.useMultiPartResponseHandler) {
+                processMultiPartResponse(finalContent, placeholderCardId, cardStream, cardId, plan);
+            } else {
+                projectState.updateCardContentData(placeholderCardId, finalContent);
+                cardStream.replace(finalContent);
+                cardStream.finish(false);
+                view.updateGroupHeaderDisplay(placeholderCardId);
+                view.focusCard(placeholderCardId, 'start');
+            }
+            enableConflictingActions();
+        };
+
+        const serviceArguments = {
+            context: projectState.getCardContextData(cardId),
+            onChunk: delta => {
+                if (!settled) cardStream.append(delta);
+            },
+            onError: error => finishFailure(error.message),
+            onDone: finishSuccess
+        };
+        if (userPrompt !== null && plan.method === 'generateCustom') serviceArguments.userPrompt = userPrompt;
 
         try {
-            const serviceArguments = {
-                context,
-                onChunk: delta => {
-                    cardStream.append(delta);
-                },
-                onError: error => {
-                    const errorContent = `AI Error: ${error.message}`;
-                    cardStream.replace(errorContent);
-                    cardStream.finish();
-                    projectState.updateCardContentData(placeholderCardId, errorContent);
-                    enableConflictingActions();
-                },
-                onDone: finalContent => {
-                    cardStream.finish();
-                    if (plan.useMultiPartResponseHandler) {
-                        processMultiPartResponse(
-                            finalContent,
-                            placeholderCardId,
-                            cardStream,
-                            cardId,
-                            plan.targetColumnIndex,
-                            plan.parentIdForNewCards
-                        );
-                    } else {
-                        if (projectState.updateCardContentData(placeholderCardId, finalContent)) {
-                            view.updateGroupHeaderDisplay(placeholderCardId);
-                        }
-                        view.focusCard(placeholderCardId, 'start');
-                    }
-                    enableConflictingActions();
-                }
-            };
-
-            if (userPrompt !== null && plan.method === 'generateCustom') {
-                serviceArguments.userPrompt = userPrompt;
-            }
             if (typeof aiService[plan.method] !== 'function') {
-                throw new Error(`Invalid aiService method name: ${plan.method}`);
+                throw new Error('Invalid aiService method name: ' + plan.method);
             }
             aiService[plan.method](serviceArguments);
+            return true;
         } catch (error) {
-            const errorContent = `Error during AI call setup: ${error.message}`;
-            cardStream.replace(errorContent);
-            cardStream.finish();
-            projectState.updateCardContentData(placeholderCardId, errorContent);
-            enableConflictingActions();
+            finishFailure('AI call setup failed: ' + error.message);
+            return false;
         }
+    }
+
+    function execute(cardId, plan, userPrompt = null) {
+        if (!aiService.areAiSettingsValid()) {
+            showAlert('Please configure AI settings first.');
+            return false;
+        }
+        if (busy) {
+            showAlert('Please wait for the current AI action to complete.');
+            return false;
+        }
+
+        const card = projectState.getCard(cardId);
+        if (!card || !plan) return false;
+        if (plan.requiresContentCheck && !card.content?.trim()) {
+            showAlert('Card #' + cardId.slice(-4) + ' has no content for this action.');
+            return false;
+        }
+        if (!projectState.getCardContextData(cardId)) return false;
+
+        disableConflictingActions();
+        return plan.targetKind === 'option'
+            ? executeOptionTarget(cardId, plan, userPrompt)
+            : executeCardTarget(cardId, plan, userPrompt);
     }
 
     function run(action, cardId) {
         const card = projectState.getCard(cardId);
-        if (!card) return;
+        if (!card) return false;
         const siblings = action === 'summarize' || action === 'continue'
             ? projectState.getSiblingCards(cardId)
             : [];
-        const plan = getAiActionPlan(action, card, siblings);
-        if (plan) execute(cardId, plan);
+        const plan = getAiActionPlan(action, card, siblings, { mode: getMode() });
+        return plan ? execute(cardId, plan) : false;
     }
 
     function custom(cardId) {
         const card = projectState.getCard(cardId);
-        if (!card) return;
+        if (!card) return false;
         if (!aiService.areAiSettingsValid()) {
-            alert('Please configure AI settings first.');
-            return;
+            showAlert('Please configure AI settings first.');
+            return false;
         }
         if (busy) {
-            alert('Please wait for the current AI action to complete.');
-            return;
+            showAlert('Please wait for the current AI action to complete.');
+            return false;
         }
 
-        view.showCustomAiPrompt(cardId, userPrompt => {
-            execute(cardId, getAiActionPlan('custom', card), userPrompt);
+        const mode = getMode();
+        const targets = mode === 'document'
+            ? ['rewrite', 'next']
+            : ['rewrite', 'next', 'children'];
+        view.showCustomAiPrompt(cardId, targets, ({ userPrompt, target }) => {
+            const siblingsForTarget = target === 'next' ? projectState.getSiblingCards(cardId) : [];
+            const plan = getAiActionPlan('custom', card, siblingsForTarget, {
+                mode,
+                customTarget: target
+            });
+            if (plan) execute(cardId, plan, userPrompt);
         });
+        return true;
     }
 
     function updateFeatureVisibility(isValid) {

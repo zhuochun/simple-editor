@@ -6,7 +6,7 @@ const BASE_COLOR_HUE = 200; // Starting Hue for first root card
 const HUE_ROTATION_STEP = 30; // Degrees to shift hue for each subsequent root card
 const BASE_COLOR_SATURATION = 60;
 const BASE_COLOR_LIGHTNESS = 90;
-const GROUP_LIGHTNESS_STEP_DOWN = 3; // How much darker each card in a group gets vs the one above it
+const HIERARCHY_LIGHTNESS_STEP = 2; // Descendants keep the branch hue and become a lighter tint by depth.
 
 // --- State ---
 let projects = {}; // { projectId: { id, title, lastModified, data: { columns: [{id, prompt?}], cards: {} } } }
@@ -34,7 +34,8 @@ function createDefaultProject(title = "Untitled Project") {
         data: {
             columns: defaultColumns,
             cards: {},
-            globalPrompt: ''
+            globalPrompt: '',
+            options: {}
         }
     };
 }
@@ -145,6 +146,9 @@ function getActiveProjectData() {
     if (proj.data.globalPrompt === undefined) {
         proj.data.globalPrompt = '';
     }
+    if (!proj.data.options || typeof proj.data.options !== 'object' || Array.isArray(proj.data.options)) {
+        proj.data.options = {};
+    }
     // Colors will be calculated on demand (e.g., during rendering)
     return proj.data;
 }
@@ -153,9 +157,10 @@ function saveProjectsData() {
     try {
         localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
         console.log("All projects data saved.");
+        return { ok: true };
     } catch (e) {
         console.error("Error saving projects data to localStorage:", e);
-        // Consider notifying the user
+        return { ok: false, error: e };
     }
 }
 
@@ -183,16 +188,37 @@ function markProjectChanged(projectId = activeProjectId) {
 }
 
 function withProjectTransaction(operation) {
+    const isOutermost = projectTransactionDepth === 0;
+    const projectsBefore = isOutermost ? JSON.parse(JSON.stringify(projects)) : null;
+    const activeProjectIdBefore = isOutermost ? activeProjectId : null;
+    const savePendingBefore = projectSavePending;
     projectTransactionDepth += 1;
+    let result;
     try {
-        return operation();
+        result = operation();
+    } catch (error) {
+        if (isOutermost) {
+            projects = projectsBefore;
+            activeProjectId = activeProjectIdBefore;
+            projectSavePending = savePendingBefore;
+        }
+        throw error;
     } finally {
         projectTransactionDepth -= 1;
-        if (projectTransactionDepth === 0 && projectSavePending) {
-            projectSavePending = false;
-            saveProjectsData();
+    }
+
+    if (isOutermost && projectSavePending) {
+        projectSavePending = false;
+        const saveResult = saveProjectsData();
+        if (!saveResult.ok) {
+            projects = projectsBefore;
+            activeProjectId = activeProjectIdBefore;
+            projectSavePending = savePendingBefore;
+            return { success: false, reason: 'persistence-failed', error: saveResult.error };
         }
     }
+
+    return result;
 }
 
 function loadProjectsData() {
@@ -375,6 +401,185 @@ function getSiblingCards(cardId) {
         .sort((a, b) => a.order - b.order);
 }
 
+function compareOptionHistory(left, right) {
+    if (left.createdAt !== right.createdAt) return right.createdAt - left.createdAt;
+    if (left.id === right.id) return 0;
+    return left.id < right.id ? 1 : -1;
+}
+
+function getOption(optionId) {
+    const projectData = getActiveProjectData();
+    return projectData?.options[optionId] || null;
+}
+
+function getOptionsForCard(cardId) {
+    const projectData = getActiveProjectData();
+    if (!projectData?.cards[cardId]) return [];
+    return Object.values(projectData.options)
+        .filter(option => option.cardId === cardId)
+        .sort(compareOptionHistory);
+}
+
+function captureSiblingSnapshot(cardId, cardOverride = null) {
+    const owner = getCard(cardId);
+    if (!owner) return null;
+
+    const cards = getSiblingCards(cardId).map(card => {
+        const isOverrideTarget = card.id === cardId && cardOverride;
+        return {
+            id: card.id,
+            name: isOverrideTarget && Object.hasOwn(cardOverride, 'name')
+                ? cardOverride.name
+                : (card.name ?? null),
+            content: isOverrideTarget && Object.hasOwn(cardOverride, 'content')
+                ? cardOverride.content
+                : (card.content ?? ''),
+            order: card.order
+        };
+    });
+    return { cards };
+}
+
+function addOptionRecord(cardId, source, snapshot) {
+    const projectData = getActiveProjectData();
+    if (!projectData?.cards[cardId] || !['Manual', 'AI'].includes(source) || !snapshot) return null;
+
+    const option = {
+        id: generateId('option_'),
+        cardId,
+        source,
+        createdAt: Date.now(),
+        snapshot: JSON.parse(JSON.stringify(snapshot))
+    };
+    projectData.options[option.id] = option;
+    markProjectChanged();
+    return option;
+}
+
+function createOptionData(cardId, source = 'Manual', cardOverride = null) {
+    const owner = getCard(cardId);
+    if (!owner) return { success: false, reason: 'missing-owner' };
+    if (!['Manual', 'AI'].includes(source)) return { success: false, reason: 'invalid-source' };
+    if (cardOverride && Object.hasOwn(cardOverride, 'content') && typeof cardOverride.content !== 'string') {
+        return { success: false, reason: 'invalid-content' };
+    }
+    if (cardOverride && Object.hasOwn(cardOverride, 'name') && cardOverride.name !== null && typeof cardOverride.name !== 'string') {
+        return { success: false, reason: 'invalid-name' };
+    }
+
+    return withProjectTransaction(() => {
+        const snapshot = captureSiblingSnapshot(cardId, cardOverride);
+        const option = addOptionRecord(cardId, source, snapshot);
+        return option
+            ? { success: true, option: JSON.parse(JSON.stringify(option)) }
+            : { success: false, reason: 'option-create-failed' };
+    });
+}
+
+function deleteOptionsForCardIds(cardIds) {
+    const projectData = getActiveProjectData();
+    if (!projectData) return [];
+    const ownerIds = cardIds instanceof Set ? cardIds : new Set(cardIds);
+    const deletedOptionIds = [];
+    for (const [optionId, option] of Object.entries(projectData.options)) {
+        if (!ownerIds.has(option.cardId)) continue;
+        delete projectData.options[optionId];
+        deletedOptionIds.push(optionId);
+    }
+    return deletedOptionIds;
+}
+
+function deleteOptionData(optionId) {
+    const option = getOption(optionId);
+    if (!option) return { success: false, reason: 'missing-option' };
+    const options = getOptionsForCard(option.cardId);
+    if (options.length <= 1) return { success: false, reason: 'final-option' };
+    const selectedIndex = options.findIndex(candidate => candidate.id === optionId);
+    const nextSelection = options[selectedIndex - 1] || options[selectedIndex + 1] || null;
+
+    return withProjectTransaction(() => {
+        const projectData = getActiveProjectData();
+        delete projectData.options[optionId];
+        markProjectChanged();
+        return {
+            success: true,
+            deletedOptionId: optionId,
+            selectedOptionId: nextSelection?.id || null
+        };
+    });
+}
+
+function getOptionUseAvailability(optionId) {
+    const option = getOption(optionId);
+    if (!option) return { available: false, reason: 'missing-option' };
+    const owner = getCard(option.cardId);
+    if (!owner) return { available: false, reason: 'missing-owner' };
+
+    const snapshotIds = new Set(option.snapshot.cards.map(card => card.id));
+    for (const snapshotCard of option.snapshot.cards) {
+        const liveCard = getCard(snapshotCard.id);
+        if (liveCard && (liveCard.parentId !== owner.parentId || liveCard.columnIndex !== owner.columnIndex)) {
+            return { available: false, reason: 'cross-scope-card', cardId: snapshotCard.id };
+        }
+    }
+    for (const sibling of getSiblingCards(owner.id)) {
+        if (!snapshotIds.has(sibling.id) && getChildCards(sibling.id).length > 0) {
+            return { available: false, reason: 'document-scope-descendants', cardId: sibling.id };
+        }
+    }
+    return { available: true };
+}
+
+function useOptionAsCurrentData(optionId) {
+    const availability = getOptionUseAvailability(optionId);
+    if (!availability.available) return { success: false, ...availability };
+
+    return withProjectTransaction(() => {
+        const projectData = getActiveProjectData();
+        const option = projectData.options[optionId];
+        const owner = projectData.cards[option.cardId];
+        const outgoingSnapshot = captureSiblingSnapshot(owner.id);
+        const outgoingOption = addOptionRecord(owner.id, 'Manual', outgoingSnapshot);
+        if (!outgoingOption) return { success: false, reason: 'outgoing-option-failed' };
+
+        const snapshotIds = new Set(option.snapshot.cards.map(card => card.id));
+        for (const sibling of [...getSiblingCards(owner.id)]) {
+            if (!snapshotIds.has(sibling.id)) deleteCardData(sibling.id);
+        }
+
+        for (const snapshotCard of option.snapshot.cards) {
+            let liveCard = projectData.cards[snapshotCard.id];
+            if (!liveCard) {
+                liveCard = {
+                    id: snapshotCard.id,
+                    name: snapshotCard.name ?? null,
+                    content: snapshotCard.content ?? '',
+                    parentId: owner.parentId,
+                    columnIndex: owner.columnIndex,
+                    order: snapshotCard.order,
+                    color: ''
+                };
+                projectData.cards[liveCard.id] = liveCard;
+            } else {
+                liveCard.name = snapshotCard.name ?? null;
+                liveCard.content = snapshotCard.content ?? '';
+                liveCard.order = snapshotCard.order;
+            }
+        }
+
+        for (const sibling of getSiblingCards(owner.id)) {
+            sibling.color = getColorForCard(sibling);
+        }
+        markProjectChanged();
+        return {
+            success: true,
+            optionId,
+            outgoingOptionId: outgoingOption.id,
+            focusCardId: owner.id
+        };
+    });
+}
+
 
 function getDescendantIds(cardId) {
     const projectData = getActiveProjectData();
@@ -425,7 +630,7 @@ function getCardContextData(cardId) {
 /**
  * Calculates the HSL color string for a given card based on its position and hierarchy.
  * - Root cards (column 0, no parent) get unique hues based on their final sorted order in the column.
- * - Child cards inherit the hue from their parent and decrease lightness based on their sibling order.
+ * - Child cards inherit their root branch hue and become a lighter tint by hierarchy depth.
  * @param {Object} card - The card data object.
  * @returns {string} An HSL color string (e.g., "hsl(200, 60%, 90%)").
  */
@@ -444,24 +649,18 @@ function getColorForCard(card) {
         const parentCard = getCard(card.parentId); // Relies on active project data
         if (!parentCard) {
              // Fallback if parent is somehow missing
-            return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS - GROUP_LIGHTNESS_STEP_DOWN}%)`;
+            return `hsl(${BASE_COLOR_HUE}, ${BASE_COLOR_SATURATION}%, ${BASE_COLOR_LIGHTNESS}%)`;
         }
 
-        // Parent color might not be calculated yet if we process out of order,
-        // so ensure it's calculated recursively if needed.
-        // NOTE: Potential for deep recursion if called before parent colors are set.
-        // Consider pre-calculating all colors after data load/major change.
-        const parentColor = parentCard.color || getColorForCard(parentCard);
+        // Derive from live hierarchy instead of a persisted color so imported legacy
+        // cards and moved subtrees immediately follow the current visual contract.
+        const parentColor = getColorForCard(parentCard);
 
         try {
             const match = parentColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
             if (match) {
                 let [, h, s, l] = match.map(Number);
-                // Sibling order determines lightness variation
-                const siblings = getSiblingCards(card.id); // Uses simple 'order' sort, which is correct here
-                const siblingIndex = siblings.findIndex(c => c.id === card.id);
-                const indexInGroup = siblingIndex >= 0 ? siblingIndex : 0;
-                const newLightness = Math.max(15, l - (indexInGroup * GROUP_LIGHTNESS_STEP_DOWN));
+                const newLightness = Math.min(97, l + HIERARCHY_LIGHTNESS_STEP);
                 return `hsl(${h}, ${s}%, ${newLightness}%)`;
             } else {
                  console.warn(`Could not parse parent color: ${parentColor}`);
@@ -587,6 +786,7 @@ function deleteCardData(cardId) {
 
     const descendantIds = getDescendantIds(cardId);
     const allIdsToDelete = [cardId, ...descendantIds];
+    const deletedOptionIds = deleteOptionsForCardIds(new Set(allIdsToDelete));
     const affectedColumns = new Set();
     const wasRoot = !card.parentId && card.columnIndex === 0;
     let rootColorsNeedUpdate = wasRoot;
@@ -613,7 +813,7 @@ function deleteCardData(cardId) {
     markProjectChanged();
 
     console.log(`Card data ${cardId} and ${descendantIds.length} descendants deleted.`);
-    return { deletedIds: allIdsToDelete, affectedColumns, rootColorsNeedUpdate };
+    return { deletedIds: allIdsToDelete, deletedOptionIds, affectedColumns, rootColorsNeedUpdate };
 }
 
 function appendColumnData() {
@@ -912,7 +1112,7 @@ function splitCardData(cardId, currentContent, splitIndex, asChild = false) {
     });
 }
 
-function mergeCardData(cardId, direction, currentContent) {
+function mergeCardData(cardId, direction, currentContent, options = {}) {
     const currentCard = getCard(cardId);
     if (!currentCard || typeof currentContent !== 'string' || !['previous', 'next'].includes(direction)) {
         return { success: false, reason: 'invalid-merge' };
@@ -923,18 +1123,27 @@ function mergeCardData(cardId, direction, currentContent) {
     const adjacentCard = direction === 'previous' ? siblings[currentIndex - 1] : siblings[currentIndex + 1];
     if (!adjacentCard) return { success: false, reason: 'no-adjacent-sibling' };
 
+    const upperCard = direction === 'previous' ? adjacentCard : currentCard;
+    const lowerCard = direction === 'previous' ? currentCard : adjacentCard;
+    if (options.documentMode && getChildCards(lowerCard.id).length > 0) {
+        return { success: false, reason: 'document-scope-descendants' };
+    }
+
     return withProjectTransaction(() => {
-        const survivor = direction === 'previous' ? adjacentCard : currentCard;
-        const removed = direction === 'previous' ? currentCard : adjacentCard;
+        const survivor = upperCard;
+        const removed = lowerCard;
         const survivorOriginalContent = direction === 'previous' ? (adjacentCard.content || '') : currentContent;
         const removedContent = direction === 'previous' ? currentContent : (adjacentCard.content || '');
         const mergedContent = survivorOriginalContent + removedContent;
         const cursorPosition = survivorOriginalContent.length;
         const affectedColumns = new Set([survivor.columnIndex, removed.columnIndex]);
+        const deletedOptionIds = deleteOptionsForCardIds(new Set([survivor.id, removed.id]));
 
         updateCardContentData(survivor.id, mergedContent);
-        const reparentResult = reparentChildrenData(removed.id, survivor.id);
-        for (const columnIndex of reparentResult.affectedColumns || []) affectedColumns.add(columnIndex);
+        if (!options.documentMode) {
+            const reparentResult = reparentChildrenData(removed.id, survivor.id);
+            for (const columnIndex of reparentResult.affectedColumns || []) affectedColumns.add(columnIndex);
+        }
         const deleteResult = deleteCardData(removed.id);
         for (const columnIndex of deleteResult.affectedColumns || []) affectedColumns.add(columnIndex);
 
@@ -943,6 +1152,7 @@ function mergeCardData(cardId, direction, currentContent) {
             focusCardId: survivor.id,
             cursorPosition,
             removedCardId: removed.id,
+            deletedOptionIds,
             affectedColumns: [...affectedColumns].sort((left, right) => left - right)
         };
     });
@@ -968,6 +1178,9 @@ export {
     getColumnCards,
     getChildCards,
     getSiblingCards,
+    getOption,
+    getOptionsForCard,
+    getOptionUseAvailability,
     getDescendantIds,
     getAncestorIds,
     getCardContextData,
@@ -975,6 +1188,9 @@ export {
     addCardData,
     updateCardContentData,
     updateCardNameData,
+    createOptionData,
+    deleteOptionData,
+    useOptionAsCurrentData,
     deleteCardData,
     addColumnData,
     deleteColumnData,

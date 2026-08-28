@@ -30,6 +30,18 @@ function runStructuralShortcut(textarea, operation) {
     }
 }
 
+function getNavigationSiblings(cardId, currentCardData, helpers, direction) {
+    if (helpers.getMode?.() === 'document') return helpers.getSiblingCards(cardId);
+    if (!currentCardData.parentId) return helpers.getColumnCards(currentCardData.columnIndex);
+
+    let siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
+    const currentIndex = siblings.findIndex(card => card.id === cardId);
+    const atBoundary = direction === 'next'
+        ? currentIndex + 1 >= siblings.length
+        : currentIndex <= 0;
+    return atBoundary ? helpers.getColumnCards(currentCardData.columnIndex) : siblings;
+}
+
 // Main keyboard shortcut handler for card textareas
 export function handleCardTextareaKeydown(event, helpers) {
     const textarea = event.target;
@@ -65,6 +77,7 @@ export function handleCardTextareaKeydown(event, helpers) {
             // === Alt+Enter: Split Card as Child ===
             else if (altPressed) {
                 event.preventDefault();
+                if (helpers.getMode?.() === 'document') break;
                 console.log(`Shortcut: Alt+Enter (Split Child) on card ${cardId}`);
                 const result = runStructuralShortcut(textarea, () =>
                     helpers.splitCard(cardId, textarea.value, textarea.selectionStart, true)
@@ -88,19 +101,8 @@ export function handleCardTextareaKeydown(event, helpers) {
                     const currentCardData = helpers.getCard(cardId);
                     if (!currentCardData) return;
 
-                    let siblings;
-                    let currentIndex;
-                    if (currentCardData.parentId) {
-                        siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                        // Go to next column card
-                        currentIndex = siblings.findIndex(c => c.id === cardId);
-                        if (currentIndex + 1 >= siblings.length) {
-                            siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                        }
-                    } else {
-                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                    }
-                    currentIndex = siblings.findIndex(c => c.id === cardId);
+                    const siblings = getNavigationSiblings(cardId, currentCardData, helpers, 'next');
+                    const currentIndex = siblings.findIndex(c => c.id === cardId);
                     if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
                         const nextCardId = siblings[currentIndex + 1].id;
                         helpers.focusCardTextarea(nextCardId, 'start'); // Focus start of next card
@@ -114,19 +116,8 @@ export function handleCardTextareaKeydown(event, helpers) {
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
 
-                let siblings;
-                let currentIndex;
-                if (currentCardData.parentId) {
-                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                    // Go to next column card
-                    currentIndex = siblings.findIndex(c => c.id === cardId);
-                    if (currentIndex + 1 >= siblings.length) {
-                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                    }
-                } else {
-                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                }
-                currentIndex = siblings.findIndex(c => c.id === cardId);
+                const siblings = getNavigationSiblings(cardId, currentCardData, helpers, 'next');
+                const currentIndex = siblings.findIndex(c => c.id === cardId);
                 if (currentIndex !== -1 && currentIndex + 1 < siblings.length) {
                     const nextCardId = siblings[currentIndex + 1].id;
                     helpers.focusCardTextarea(nextCardId, 'preserve'); // Preserve position if possible, otherwise start
@@ -145,19 +136,8 @@ export function handleCardTextareaKeydown(event, helpers) {
                     const currentCardData = helpers.getCard(cardId);
                     if (!currentCardData) return;
 
-                    let siblings;
-                    let currentIndex;
-                    if (currentCardData.parentId) {
-                        siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                        // Go to prev column card
-                        currentIndex = siblings.findIndex(c => c.id === cardId);
-                        if (currentIndex <= 0) {
-                            siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                        }
-                    } else {
-                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                    }
-                    currentIndex = siblings.findIndex(c => c.id === cardId);
+                    const siblings = getNavigationSiblings(cardId, currentCardData, helpers, 'previous');
+                    const currentIndex = siblings.findIndex(c => c.id === cardId);
                     if (currentIndex > 0) {
                         const prevCardId = siblings[currentIndex - 1].id;
                         helpers.focusCardTextarea(prevCardId, 'end'); // Focus end of previous card
@@ -171,19 +151,8 @@ export function handleCardTextareaKeydown(event, helpers) {
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData) return;
 
-                let siblings;
-                let currentIndex;
-                if (currentCardData.parentId) {
-                    siblings = helpers.getChildCards(currentCardData.parentId, currentCardData.columnIndex);
-                    // Go to prev column card
-                    currentIndex = siblings.findIndex(c => c.id === cardId);
-                    if (currentIndex <= 0) {
-                        siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                    }
-                } else {
-                    siblings = helpers.getColumnCards(currentCardData.columnIndex);
-                }
-                currentIndex = siblings.findIndex(c => c.id === cardId);
+                const siblings = getNavigationSiblings(cardId, currentCardData, helpers, 'previous');
+                const currentIndex = siblings.findIndex(c => c.id === cardId);
                 if (currentIndex > 0) {
                     const prevCardId = siblings[currentIndex - 1].id;
                     helpers.focusCardTextarea(prevCardId, 'preserve'); // Preserve position if possible, otherwise end
@@ -199,7 +168,8 @@ export function handleCardTextareaKeydown(event, helpers) {
                 const currentCardData = helpers.getCard(cardId);
                 if (!currentCardData || !currentCardData.parentId) return; // Must have a parent
 
-                helpers.focusCardTextarea(currentCardData.parentId, 'end'); // Focus end of parent card
+                if (helpers.getMode?.() === 'document') helpers.openDocument(currentCardData.parentId, 'end');
+                else helpers.focusCardTextarea(currentCardData.parentId, 'end');
             }
             break;
 
@@ -216,7 +186,8 @@ export function handleCardTextareaKeydown(event, helpers) {
 
                 if (children.length > 0) {
                     const firstChildId = children[0].id;
-                    helpers.focusCardTextarea(firstChildId, 'start'); // Focus start of first child
+                    if (helpers.getMode?.() === 'document') helpers.openDocument(firstChildId, 'start');
+                    else helpers.focusCardTextarea(firstChildId, 'start');
                 }
             }
             break;

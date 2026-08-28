@@ -1,5 +1,7 @@
-const CURRENT_PROJECT_SCHEMA_VERSION = 1;
+const LEGACY_PROJECT_SCHEMA_VERSION = 1;
+const CURRENT_PROJECT_SCHEMA_VERSION = 2;
 const MIN_PROJECT_COLUMNS = 3;
+const OPTION_SOURCES = new Set(['Manual', 'AI']);
 
 function isPlainObject(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -13,13 +15,99 @@ function failure(code, message) {
     return { ok: false, error: { code, message } };
 }
 
+function normalizeOptionSnapshot(sourceSnapshot, optionKey) {
+    if (!isPlainObject(sourceSnapshot) || !Array.isArray(sourceSnapshot.cards)) {
+        return failure('invalid-option-snapshot', `Option ${optionKey} must contain a snapshot cards array.`);
+    }
+
+    const seenCardIds = new Set();
+    const normalizedSnapshotCards = [];
+    for (const [index, sourceCard] of sourceSnapshot.cards.entries()) {
+        if (!isPlainObject(sourceCard)) {
+            return failure('invalid-option-snapshot-card', `Option ${optionKey} snapshot Card ${index} must be an object.`);
+        }
+        if (typeof sourceCard.id !== 'string' || !sourceCard.id.trim()) {
+            return failure('invalid-option-snapshot-card-id', `Option ${optionKey} snapshot Card ${index} has an invalid ID.`);
+        }
+        if (seenCardIds.has(sourceCard.id)) {
+            return failure('duplicate-option-snapshot-card', `Option ${optionKey} contains duplicate snapshot Card ID ${sourceCard.id}.`);
+        }
+        if (sourceCard.name !== undefined && sourceCard.name !== null && typeof sourceCard.name !== 'string') {
+            return failure('invalid-option-snapshot-card-name', `Option ${optionKey} snapshot Card ${sourceCard.id} has an invalid name.`);
+        }
+        if (sourceCard.content !== undefined && typeof sourceCard.content !== 'string') {
+            return failure('invalid-option-snapshot-card-content', `Option ${optionKey} snapshot Card ${sourceCard.id} has non-text content.`);
+        }
+        if (!Number.isFinite(sourceCard.order)) {
+            return failure('invalid-option-snapshot-card-order', `Option ${optionKey} snapshot Card ${sourceCard.id} has an invalid order.`);
+        }
+        if ('parentId' in sourceCard || 'columnIndex' in sourceCard || 'color' in sourceCard) {
+            return failure('invalid-option-snapshot-scope', `Option ${optionKey} snapshot Cards cannot store hierarchy or derived color fields.`);
+        }
+
+        seenCardIds.add(sourceCard.id);
+        normalizedSnapshotCards.push({
+            ...sourceCard,
+            name: sourceCard.name ?? null,
+            content: sourceCard.content ?? ''
+        });
+    }
+
+    return {
+        ok: true,
+        value: {
+            ...sourceSnapshot,
+            cards: normalizedSnapshotCards
+        },
+        cardIds: seenCardIds
+    };
+}
+
+function normalizeOptions(sourceOptions, normalizedCards) {
+    if (!isPlainObject(sourceOptions)) {
+        return failure('invalid-options', 'Version 2 project data must contain an options object.');
+    }
+
+    const normalizedOptions = {};
+    for (const [optionKey, sourceOption] of Object.entries(sourceOptions)) {
+        if (!isPlainObject(sourceOption)) {
+            return failure('invalid-option', `Option ${optionKey} must be an object.`);
+        }
+        if (typeof sourceOption.id !== 'string' || sourceOption.id !== optionKey) {
+            return failure('option-id-mismatch', `Option key ${optionKey} does not match its Option ID.`);
+        }
+        if (typeof sourceOption.cardId !== 'string' || !normalizedCards[sourceOption.cardId]) {
+            return failure('missing-option-owner', `Option ${optionKey} references a missing owner Card.`);
+        }
+        if (!OPTION_SOURCES.has(sourceOption.source)) {
+            return failure('invalid-option-source', `Option ${optionKey} has an invalid creation source.`);
+        }
+        if (!Number.isFinite(sourceOption.createdAt) || sourceOption.createdAt < 0) {
+            return failure('invalid-option-created-at', `Option ${optionKey} has an invalid creation time.`);
+        }
+
+        const snapshotResult = normalizeOptionSnapshot(sourceOption.snapshot, optionKey);
+        if (!snapshotResult.ok) return snapshotResult;
+        if (!snapshotResult.cardIds.has(sourceOption.cardId)) {
+            return failure('missing-option-owner-snapshot', `Option ${optionKey} snapshot does not contain its owner Card.`);
+        }
+
+        normalizedOptions[optionKey] = {
+            ...sourceOption,
+            snapshot: snapshotResult.value
+        };
+    }
+
+    return { ok: true, value: normalizedOptions };
+}
+
 function normalizeProjectExport(payload, options = {}) {
     if (!isPlainObject(payload)) {
         return failure('invalid-envelope', 'The imported JSON must contain a project object.');
     }
 
-    const schemaVersion = payload.schemaVersion ?? CURRENT_PROJECT_SCHEMA_VERSION;
-    if (!Number.isInteger(schemaVersion) || schemaVersion !== CURRENT_PROJECT_SCHEMA_VERSION) {
+    const schemaVersion = payload.schemaVersion ?? LEGACY_PROJECT_SCHEMA_VERSION;
+    if (!Number.isInteger(schemaVersion) || ![LEGACY_PROJECT_SCHEMA_VERSION, CURRENT_PROJECT_SCHEMA_VERSION].includes(schemaVersion)) {
         const detail = Number.isInteger(schemaVersion) && schemaVersion > CURRENT_PROJECT_SCHEMA_VERSION
             ? `Project format version ${schemaVersion} is newer than the supported version ${CURRENT_PROJECT_SCHEMA_VERSION}.`
             : `Project format version ${schemaVersion} is not supported.`;
@@ -34,6 +122,9 @@ function normalizeProjectExport(payload, options = {}) {
     }
     if (!isPlainObject(payload.data.cards)) {
         return failure('invalid-cards', 'Project data must contain a cards object.');
+    }
+    if (schemaVersion === LEGACY_PROJECT_SCHEMA_VERSION && Object.hasOwn(payload.data, 'options')) {
+        return failure('options-require-version-2', 'Project Options require schema version 2.');
     }
 
     const generateColumnId = options.generateColumnId || createColumnId;
@@ -137,6 +228,11 @@ function normalizeProjectExport(payload, options = {}) {
         return failure('invalid-global-prompt', 'The project global prompt must be text.');
     }
 
+    const optionsResult = schemaVersion === CURRENT_PROJECT_SCHEMA_VERSION
+        ? normalizeOptions(payload.data.options, normalizedCards)
+        : { ok: true, value: {} };
+    if (!optionsResult.ok) return optionsResult;
+
     return {
         ok: true,
         value: {
@@ -145,7 +241,8 @@ function normalizeProjectExport(payload, options = {}) {
                 ...payload.data,
                 columns: normalizedColumns,
                 cards: normalizedCards,
-                globalPrompt
+                globalPrompt,
+                options: optionsResult.value
             }
         }
     };
@@ -163,7 +260,10 @@ function createProjectExport(project) {
     return {
         schemaVersion: CURRENT_PROJECT_SCHEMA_VERSION,
         title: project.title,
-        data: project.data
+        data: {
+            ...project.data,
+            options: project.data.options ?? {}
+        }
     };
 }
 

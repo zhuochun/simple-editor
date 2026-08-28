@@ -26,12 +26,12 @@ script
 
 ## Module ownership
 
-- `projectState.js` owns projects, active selection, hierarchy and ordering invariants, timestamps, colors, and persistence. Public mutations save their own completed result.
-- `projectFormat.js` owns versioned parsing, legacy compatibility, normalization, validation, JSON envelopes, and plain-text traversal.
+- `projectState.js` owns projects, active selection, hierarchy and ordering invariants, card-owned Option lifecycle, atomic Option use, timestamps, colors, and persistence. Public mutations save their own completed result.
+- `projectFormat.js` owns versioned parsing, legacy compatibility, Card and Option normalization/validation, JSON envelopes, and Current-only plain-text traversal.
 - `projectTransfer.js` owns browser import and export effects. Imported input reaches project state only after format validation succeeds.
-- `editorView.js` owns card, group, column, toolbar, project-list, and AI-related DOM presentation. It receives read-only project queries and emits intent through injected actions.
+- `editorView.js` owns Map and Document presentation, Current/History layout, Option browsing controls, card/group/column/toolbars, project list, and AI-related DOM presentation. It receives read-only project queries and emits intent through injected actions.
 - `editorDom.js` owns reusable DOM mechanics: lookup, focus, textarea sizing, hierarchy scrolling and highlighting, and modal construction. It does not own presentation policy.
-- `aiWorkflow.js` owns AI action selection, result placement, placeholder lifecycle, streaming transitions, multipart results, and busy-state policy. It uses a narrow view interface and does not query or mutate DOM directly.
+- `aiWorkflow.js` owns mode-sensitive AI action selection, Option-or-Card result placement, placeholder lifecycle, streaming transitions, multipart results, and busy-state policy. It uses a narrow view interface and has no deletion capability.
 - `aiService.js` owns AI settings, prompt construction, project-context consumption, and OpenAI-compatible streaming transport.
 - `cardShortcuts.js` and `dragDrop.js` translate browser gestures into complete project commands. They own gesture state, not project mutations or persistence.
 - `editorController.js` is the composition root and command mapper. It does not construct cards or columns or own AI streaming callbacks.
@@ -44,6 +44,7 @@ script
 - Presentation policy has one owner: `editorView.js`.
 - Format compatibility has one owner: `projectFormat.js`.
 - AI transport does not decide card placement; AI workflow does not construct provider requests.
+- Document presentation cannot move or reparent Cards. Shortcut and controller commands pass complete sibling-scoped mutations to project state.
 
 ## When to revisit
 

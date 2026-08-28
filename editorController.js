@@ -82,6 +82,9 @@ function initializeEditorApp() {
             getCard: data.getCard,
             getColumnCards: data.getColumnCards,
             getChildCards: data.getChildCards,
+            getSiblingCards: data.getSiblingCards,
+            getOptionsForCard: data.getOptionsForCard,
+            getOptionUseAvailability: data.getOptionUseAvailability,
             getColumnData: data.getColumnData,
             getGlobalPromptData: data.getGlobalPromptData,
             getColorForCard: data.getColorForCard
@@ -100,6 +103,10 @@ function initializeEditorApp() {
             renameProject: data.updateProjectTitle,
             updateCardContent: data.updateCardContentData,
             renameCard: data.updateCardNameData,
+            saveOption: handleSaveOption,
+            deleteOption: handleDeleteOption,
+            useOption: handleUseOption,
+            addDocumentSibling: handleAddDocumentSibling,
             aiContinue: cardId => aiWorkflow.continue(cardId),
             aiExpand: cardId => aiWorkflow.expand(cardId),
             aiSummarize: cardId => aiWorkflow.summarize(cardId),
@@ -132,10 +139,12 @@ function initializeEditorApp() {
         projectState: data,
         aiService,
         addCard: handleAddCard,
-        deleteCard: handleDeleteCard,
+        getMode: view.getMode,
         view: {
             createCardStream: view.createCardStream,
+            createOptionStream: view.createOptionStream,
             focusCard: view.focusCard,
+            optionCreated: view.optionCreated,
             setInteractionLocked: view.setInteractionLocked,
             showCustomAiPrompt: view.showCustomAiPrompt,
             updateAiFeatureVisibility: view.updateAiFeatureVisibility,
@@ -210,6 +219,32 @@ function initializeEditorApp() {
         if (parentCardData) {
             handleAddCard(parentCardData.columnIndex + 1, parentId);
         }
+    }
+
+    function handleSaveOption(cardId) {
+        if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+        return data.createOptionData(cardId, 'Manual');
+    }
+
+    function handleDeleteOption(optionId) {
+        if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+        return data.deleteOptionData(optionId);
+    }
+
+    function handleUseOption(optionId) {
+        if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+        return data.useOptionAsCurrentData(optionId);
+    }
+
+    function handleAddDocumentSibling(ownerCardId, focusedCardId) {
+        if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+        const owner = data.getCard(ownerCardId);
+        if (!owner) return { success: false, reason: 'missing-owner' };
+        const siblings = data.getSiblingCards(ownerCardId);
+        const focusedIndex = siblings.findIndex(card => card.id === focusedCardId);
+        const insertBeforeCardId = focusedIndex >= 0 ? siblings[focusedIndex + 1]?.id || null : null;
+        const card = data.addCardData(owner.columnIndex, owner.parentId, '', insertBeforeCardId);
+        return card ? { success: true, cardId: card.id } : { success: false, reason: 'card-create-failed' };
     }
 
     function handleDeleteCard(cardId) {
@@ -440,6 +475,10 @@ function initializeEditorApp() {
         // 6. Setup Keyboard Shortcuts
         const renderShortcutMutation = (result) => {
             if (!result.success) return result;
+            if (view.getMode() === 'document') {
+                view.renderDocument();
+                return result;
+            }
             const affectedColumns = result.affectedColumns || [];
             const needsFullRender = affectedColumns.some(index => index >= columnsContainer.children.length);
             if (needsFullRender) {
@@ -457,11 +496,20 @@ function initializeEditorApp() {
             getCard: data.getCard,
             getColumnCards: data.getColumnCards,
             getChildCards: data.getChildCards,
-            splitCard: (cardId, content, cursor, asChild) =>
-                renderShortcutMutation(data.splitCardData(cardId, content, cursor, asChild)),
-            mergeCard: (cardId, direction, content) =>
-                renderShortcutMutation(data.mergeCardData(cardId, direction, content)),
-            focusCardTextarea
+            getSiblingCards: data.getSiblingCards,
+            getMode: view.getMode,
+            splitCard: (cardId, content, cursor, asChild) => {
+                if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+                return renderShortcutMutation(data.splitCardData(cardId, content, cursor, asChild));
+            },
+            mergeCard: (cardId, direction, content) => {
+                if (aiWorkflow.isBusy()) return { success: false, reason: 'ai-busy' };
+                return renderShortcutMutation(data.mergeCardData(cardId, direction, content, {
+                    documentMode: view.getMode() === 'document'
+                }));
+            },
+            focusCardTextarea,
+            openDocument: view.openDocument
         };
 
         // Attach the single keydown listener using event delegation

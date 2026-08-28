@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createEditorView, getCardDisplayName, getGroupPresentation } from '../editorView.js';
+import {
+    createEditorView,
+    getAdjacentOptionId,
+    getCardDisplayName,
+    getGroupPresentation,
+    getHierarchyDepth,
+    getHistorySelection,
+    shouldOpenDocumentFromCardClick
+} from '../editorView.js';
 
 test('card presentation uses names when present and IDs as the fallback', () => {
     assert.deepEqual(getCardDisplayName({ id: 'card-123456', name: null }, 50), {
@@ -52,4 +60,40 @@ test('view updates group headers through the same presentation policy', () => {
         textContent: '>> #3456: Updated...',
         title: 'Children of #3456: Updated content beyond limit'
     });
+});
+
+test('history selection is stable and browsing clamps at both boundaries', () => {
+    const options = [{ id: 'newest' }, { id: 'middle' }, { id: 'oldest' }];
+
+    assert.equal(getHistorySelection(options, null).id, 'newest');
+    assert.equal(getHistorySelection(options, 'middle').id, 'middle');
+    assert.equal(getHistorySelection(options, 'missing').id, 'newest');
+    assert.equal(getAdjacentOptionId(options, 'newest', 'newer'), 'newest');
+    assert.equal(getAdjacentOptionId(options, 'newest', 'older'), 'middle');
+    assert.equal(getAdjacentOptionId(options, 'oldest', 'older'), 'oldest');
+    assert.equal(getAdjacentOptionId([], null, 'older'), null);
+});
+
+test('hierarchy depth follows parent identity and stops safely at a cycle', () => {
+    const cards = {
+        root: { id: 'root', parentId: null },
+        child: { id: 'child', parentId: 'root' },
+        grandchild: { id: 'grandchild', parentId: 'child' },
+        cycleA: { id: 'cycleA', parentId: 'cycleB' },
+        cycleB: { id: 'cycleB', parentId: 'cycleA' }
+    };
+    const getCard = id => cards[id] || null;
+
+    assert.equal(getHierarchyDepth(cards.root, getCard), 0);
+    assert.equal(getHierarchyDepth(cards.grandchild, getCard), 2);
+    assert.equal(getHierarchyDepth(cards.cycleA, getCard), 2);
+});
+
+test('Map Card clicks open Document mode while action controls do not', () => {
+    const cardTarget = { closest: () => null };
+    const buttonTarget = { closest: selector => selector === 'button, input' ? {} : null };
+
+    assert.equal(shouldOpenDocumentFromCardClick(false, cardTarget), true);
+    assert.equal(shouldOpenDocumentFromCardClick(false, buttonTarget), false);
+    assert.equal(shouldOpenDocumentFromCardClick(true, cardTarget), false);
 });
