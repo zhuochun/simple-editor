@@ -111,10 +111,10 @@ test('AI context is exposed as a project snapshot', async () => {
     data.setGlobalPromptData('Global');
     data.setColumnPromptData(0, 'Current column');
     data.setColumnPromptData(1, 'Target column');
-    const first = data.addCardData(0, null, 'First');
+    data.addCardData(0, null, 'First');
     const source = data.addCardData(0, null, 'Source');
-    const following = data.addCardData(0, null, 'Following');
-    const child = data.addCardData(1, source.id, 'Child');
+    data.addCardData(0, null, 'Following');
+    data.addCardData(1, source.id, 'Child');
 
     const context = data.getCardContextData(source.id);
 
@@ -128,7 +128,6 @@ test('AI context is exposed as a project snapshot', async () => {
         existingChildrenContent: ['Child'],
         targetColumnPrompt: 'Target column'
     });
-    assert.ok(first && following && child);
 });
 
 test('derived hierarchy colors keep a root hue and lighten by depth', async () => {
@@ -172,13 +171,18 @@ test('manual and AI options capture immutable direct sibling snapshots in stable
     assert.equal(ai.option.snapshot.cards[0].content, 'Alternative first');
     assert.equal(data.getCard(first.id).content, 'First');
 
-    data.getActiveProjectData().options[manual.option.id].createdAt = 10;
-    data.getActiveProjectData().options[ai.option.id].createdAt = 10;
+    data.updateCardContentData(first.id, 'Edited current');
+    assert.equal(data.getOption(manual.option.id).snapshot.cards[0].content, 'First');
+    assert.equal(data.getOption(ai.option.id).snapshot.cards[0].content, 'Alternative first');
+
+    const options = data.getActiveProjectData().options;
+    options['option-a'] = { ...options[manual.option.id], id: 'option-a', createdAt: 10 };
+    options['option-b'] = { ...options[ai.option.id], id: 'option-b', createdAt: 10 };
+    delete options[manual.option.id];
+    delete options[ai.option.id];
     assert.deepEqual(
         data.getOptionsForCard(first.id).map(option => option.id),
-        [manual.option.id, ai.option.id].sort((left, right) => (
-            left === right ? 0 : (left < right ? 1 : -1)
-        ))
+        ['option-b', 'option-a']
     );
 });
 
@@ -231,14 +235,13 @@ test('merge clears both histories and document merge rejects a lower card with c
     assert.equal(data.getOption(lowerOption.id), null);
 
     const nextLower = data.addCardData(0, null, 'Next');
-    const child = data.addCardData(1, nextLower.id, 'Child');
+    data.addCardData(1, nextLower.id, 'Child');
     const before = structuredClone(data.getActiveProjectData());
     const rejected = data.mergeCardData(upper.id, 'next', 'UpperLower', { documentMode: true });
 
     assert.equal(rejected.success, false);
     assert.equal(rejected.reason, 'document-scope-descendants');
     assert.deepEqual(data.getActiveProjectData(), before);
-    assert.ok(child);
 });
 
 test('use as current preserves outgoing state and rejects cross-scope or descendant mutation', async () => {
@@ -275,13 +278,12 @@ test('use as current preserves outgoing state and rejects cross-scope or descend
     data.getActiveProjectData().options[optionWithoutThird.id].snapshot.cards = [
         data.getActiveProjectData().options[optionWithoutThird.id].snapshot.cards[0]
     ];
-    const thirdChild = data.addCardData(1, third.id, 'Third child');
+    data.addCardData(1, third.id, 'Third child');
     const beforeDescendants = structuredClone(data.getActiveProjectData());
     const descendantRemoval = data.useOptionAsCurrentData(optionWithoutThird.id);
     assert.equal(descendantRemoval.success, false);
     assert.equal(descendantRemoval.reason, 'document-scope-descendants');
     assert.deepEqual(data.getActiveProjectData(), beforeDescendants);
-    assert.ok(thirdChild);
 });
 
 test('moving an owner or subtree preserves card-owned Option identity', async () => {

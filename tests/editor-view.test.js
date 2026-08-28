@@ -11,6 +11,33 @@ import {
     shouldOpenDocumentFromCardClick
 } from '../editorView.js';
 
+function createFakeElement() {
+    const listeners = new Map();
+    const queryResults = new Map();
+    return {
+        classList: { add() {}, remove() {}, toggle() {} },
+        dataset: {},
+        style: { setProperty() {} },
+        addEventListener(type, listener) {
+            listeners.set(type, listener);
+        },
+        appendChild() {},
+        contains() {
+            return false;
+        },
+        dispatch(type, target) {
+            listeners.get(type)?.({ target, stopPropagation() {} });
+        },
+        querySelector(selector) {
+            if (!queryResults.has(selector)) queryResults.set(selector, createFakeElement());
+            return queryResults.get(selector);
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+}
+
 test('card presentation uses names when present and IDs as the fallback', () => {
     assert.deepEqual(getCardDisplayName({ id: 'card-123456', name: null }, 50), {
         full: '#3456',
@@ -89,11 +116,76 @@ test('hierarchy depth follows parent identity and stops safely at a cycle', () =
     assert.equal(getHierarchyDepth(cards.cycleA, getCard), 2);
 });
 
-test('Map Card clicks open Document mode while action controls do not', () => {
+test('Map Card click predicate excludes action controls and Document mode', () => {
     const cardTarget = { closest: () => null };
     const buttonTarget = { closest: selector => selector === 'button, input' ? {} : null };
 
     assert.equal(shouldOpenDocumentFromCardClick(false, cardTarget), true);
     assert.equal(shouldOpenDocumentFromCardClick(false, buttonTarget), false);
     assert.equal(shouldOpenDocumentFromCardClick(true, cardTarget), false);
+});
+
+test('a rendered Map Card click enters the Document-opening path', () => {
+    const originalDocument = globalThis.document;
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const focused = [];
+    const card = { id: 'card-1', name: null, content: 'Current', parentId: 'parent', columnIndex: 1, order: 0 };
+    const parent = { id: 'parent', parentId: null };
+    const group = createFakeElement();
+    let cardReads = 0;
+
+    globalThis.document = {
+        body: createFakeElement(),
+        createElement: () => createFakeElement()
+    };
+    globalThis.requestAnimationFrame = callback => callback();
+
+    try {
+        const view = createEditorView({
+            columnsContainer: createFakeElement(),
+            projectListContainer: createFakeElement(),
+            addProjectButton: createFakeElement(),
+            model: {
+                getActiveProjectData: () => null,
+                getCard(id) {
+                    if (id === parent.id) return parent;
+                    if (id !== card.id) return null;
+                    cardReads += 1;
+                    return cardReads === 1 ? card : null;
+                },
+                getColorForCard: () => 'hsl(200, 60%, 90%)',
+                getOptionsForCard: () => [],
+                minColumns: 3
+            },
+            actions: {
+                addChildCard() {},
+                aiBreakdown() {},
+                aiContinue() {},
+                aiCustom() {},
+                aiExpand() {},
+                aiSummarize() {},
+                deleteCard() {}
+            },
+            dom: {
+                autoResizeTextarea() {},
+                focusCardTextarea: (...args) => focused.push(args),
+                getCardElement: () => null,
+                getColumnElementByIndex: () => null,
+                getGroupElement: id => id === parent.id ? group : null
+            },
+            isAiReady: () => false
+        });
+        const cardElement = view.insertCard(card, { parentId: parent.id, insertBeforeCardId: null });
+        focused.length = 0;
+
+        cardElement.dispatch('click', { closest: () => null });
+
+        assert.equal(cardReads, 2);
+        assert.deepEqual(focused, [[card.id, 'start']]);
+    } finally {
+        if (originalDocument === undefined) delete globalThis.document;
+        else globalThis.document = originalDocument;
+        if (originalRequestAnimationFrame === undefined) delete globalThis.requestAnimationFrame;
+        else globalThis.requestAnimationFrame = originalRequestAnimationFrame;
+    }
 });

@@ -233,7 +233,7 @@ test('Custom target selection is authoritative', () => {
     assert.equal(getAiActionPlan('unknown', sourceCard), null);
 });
 
-test('Option-targeting AI commits one immutable Option without adding or overwriting a Card', () => {
+test('Option-targeting AI requests one Option without adding or overwriting a Card', () => {
     const optionCalls = [];
     const addedCards = [];
     const lockedStates = [];
