@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v4-spec.md` at `bb3cd4c^`
-
 # Basic Key Shortcut Support
 
 Add key shortcuts support inside card's textarea to quickly navigate within and between cards without a mouse.

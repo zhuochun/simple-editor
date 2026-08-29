@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { AI_SERVICE_CONFIG, createAiService, normalizeAiSettings } from '../aiService.js';
+import { AI_SERVICE_CONFIG, createAiService, normalizeAiSettings } from '../../src/ai/aiService.js';
 
 function createStorage(initialValue = null) {
     const values = new Map();

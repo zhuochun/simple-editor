@@ -24,19 +24,32 @@ The Node test suite does not contact an AI provider. It covers:
 - Legacy AI-settings normalization, absolute endpoint validation, OpenAI Responses request/stream parsing, OpenRouter Chat Completions compatibility, omission of temperature, and request cancellation through local fake transports.
 - AI-busy coverage for project import and Document-to-Map navigation.
 
-## Syntax check
+## Complete verification
 
-For a broad JavaScript change, check every module:
+Install the pinned development dependencies and browser once:
 
 ```powershell
-$files = rg --files -g '*.js'
-foreach ($file in $files) {
-    node --check (Resolve-Path -LiteralPath $file).Path
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-}
+npm install
+npx playwright install chromium
 ```
 
+Then run:
+
+```powershell
+npm run verify
+```
+
+The cross-platform verifier runs `node --check` over source, tests, scripts, and Playwright configuration; then it runs the non-provider Node suite and the Chromium smoke suite.
+
 ## Browser checks
+
+Run the automated browser smoke suite independently with:
+
+```powershell
+npm run test:browser
+```
+
+It verifies startup, default project and column rendering, Card creation and blur persistence, reload restoration, Map-to-Document navigation, return to Map, and project import through the browser file chooser. It uses local fixtures only and never contacts an AI provider.
 
 DOM and interaction changes also need a local browser smoke check. Exercise the affected paths, normally including startup, project and card rendering, content editing, rename finalization, add/delete behavior, and absence of runtime errors.
 
@@ -64,4 +77,4 @@ Real-provider testing is optional and separate. Never place API keys in fixtures
 
 ## Before committing
 
-Run the narrow affected tests first, then `npm test`, relevant syntax checks, and `git diff --check`. Record browser or provider checks separately because they are not reproduced by `npm test`.
+Run the narrow affected tests first, then `npm run verify` and `git diff --check`. Record any focused manual browser or provider checks separately from the automated suites.

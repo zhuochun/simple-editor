@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createAiWorkflow, getAiActionPlan } from '../aiWorkflow.js';
+import { createAiWorkflow, getAiActionPlan } from '../../src/ai/aiWorkflow.js';
 
 const sourceCard = {
     id: 'card-b',

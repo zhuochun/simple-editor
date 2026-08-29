@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v5-spec.md` at `bb3cd4c^`
-
 # Onboarding Flow
 
 Provide an initial onboarding project (defined in `examples/new-onboarding.json`) to guide new users.

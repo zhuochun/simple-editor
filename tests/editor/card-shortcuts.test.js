@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { handleCardTextareaKeydown } from '../cardShortcuts.js';
+import { handleCardTextareaKeydown } from '../../src/editor/cardShortcuts.js';
 
 function createShortcutHarness({ key, ctrlKey = false, altKey = false, selectionStart = 0, value = 'AlphaBeta' }) {
     const cardElement = { dataset: { cardId: 'card-1' } };

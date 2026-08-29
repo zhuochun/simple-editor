@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v2-spec.md` at `bb3cd4c^`
-
 # Projects Management
 
 The initial specification was built for one group of cards, or known as a project. In this specification, we are adding multiple projects support.

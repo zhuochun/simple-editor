@@ -1,8 +1,19 @@
 {
   "name": "simple-editor",
+  "description": "A browser-native hierarchical editor for drafting and organizing complex documents.",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
-    "test": "node --test"
+    "dev": "serve .",
+    "test": "node scripts/run-unit-tests.mjs",
+    "test:browser": "playwright test",
+    "verify": "node scripts/verify.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "serve": "^14.2.6"
   }
 }

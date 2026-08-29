@@ -1,7 +1,5 @@
 > Status: As-built historical companion
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v2-spec-ai.md` at `bb3cd4c^`
-
 ## Project Management Feature Specification
 
 This document details the implementation of multi-project support in the Interactive Writing Tool.

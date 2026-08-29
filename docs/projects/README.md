@@ -11,16 +11,16 @@ Current authorities:
 
 ## History
 
-| Version | Change | Status | Associated record |
+| Date | Change | Status | Associated record |
 | --- | --- | --- | --- |
-| V1 | [Hierarchical cards](v1-hierarchical-cards.md) | Implemented historical project | [As built](v1-hierarchical-cards-as-built.md) |
-| V2 | [Project management](v2-project-management.md) | Implemented historical project | [As built](v2-project-management-as-built.md) |
-| V3 | [AI-assisted writing](v3-ai-assisted-writing.md) | Implemented historical project | [As built](v3-ai-assisted-writing-as-built.md) |
-| V4 | [Keyboard shortcuts](v4-keyboard-shortcuts.md) | Implemented historical project | — |
-| V5 | [Onboarding and import/export](v5-onboarding-import-export.md) | Implemented historical project | — |
-| V6 | [Global and column prompts](v6-global-column-prompts.md) | Implemented historical project | — |
-| V7 | [Editor module boundaries](v7-editor-module-boundaries.md) | Implemented project | — |
-| V8 | [Document Options View](v8-evolution-view.md) | Implemented and verified project | [Execution evidence](v8-execution-log.md) |
+| 2025-03-30 | [Hierarchical cards](20250330-hierarchical-cards.md) | Implemented historical project | [As built](20250330-hierarchical-cards-as-built.md) |
+| 2025-03-31 | [Project management](20250331-project-management.md) | Implemented historical project | [As built](20250331-project-management-as-built.md) |
+| 2025-03-31 | [AI-assisted writing](20250331-ai-assisted-writing.md) | Implemented historical project | [As built](20250331-ai-assisted-writing-as-built.md) |
+| 2025-04-02 | [Keyboard shortcuts](20250402-keyboard-shortcuts.md) | Implemented historical project | — |
+| 2025-04-07 | [Onboarding and import/export](20250407-onboarding-import-export.md) | Implemented historical project | — |
+| 2025-06-28 | [Global and column prompts](20250628-global-column-prompts.md) | Implemented historical project | — |
+| 2026-08-23 | [Editor module boundaries](20260823-editor-module-boundaries.md) | Implemented project | — |
+| 2026-08-28 | [Document Options View](20260828-document-options-view.md) | Implemented and verified project | [Execution evidence](20260828-document-options-view-execution.md) |
 
 The `-as-built` suffix identifies a companion reconstructed from the implementation. It is not an implementation plan and may contain lower-level details that have since changed.
 

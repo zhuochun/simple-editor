@@ -1,11 +1,11 @@
-import * as data from './projectState.js';
-import { initializeDragDrop } from './dragDrop.js';
-import { aiService } from './aiService.js';
-import { handleCardTextareaKeydown } from './cardShortcuts.js'; // Import the handler
-import { createProjectTransfer } from './projectTransfer.js';
-import { createEditorDom } from './editorDom.js';
-import { createAiWorkflow } from './aiWorkflow.js';
-import { createEditorView } from './editorView.js';
+import * as data from '../project/projectState.js';
+import { initializeDragDrop } from '../editor/dragDrop.js';
+import { aiService } from '../ai/aiService.js';
+import { handleCardTextareaKeydown } from '../editor/cardShortcuts.js'; // Import the handler
+import { createProjectTransfer } from '../project/projectTransfer.js';
+import { createEditorDom } from '../editor/editorDom.js';
+import { createAiWorkflow } from '../ai/aiWorkflow.js';
+import { createEditorView } from '../editor/editorView.js';
 
 function createMoveCardHandler({ isBusy, moveCard, getRenderedColumnCount, renderApp, renderColumn, updateToolbars }) {
     return (cardId, targetColumn, targetParent, insertBefore) => {

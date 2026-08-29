@@ -40,7 +40,19 @@ nvm install --lts
 nvm use --lts
 ```
 
-Run `npx serve`: You can then open your web browser and navigate to that address.
+Install the pinned development dependencies and start the browser-native app:
+
+```bash
+npm install
+npm run dev
+```
+
+Open the address printed by the local server. Run the complete unit, syntax, and browser verification with:
+
+```bash
+npx playwright install chromium
+npm run verify
+```
 
 ## Credits
 

@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v3-spec.md` at `bb3cd4c^`
-
 # Support AI-assisted Writing
 
 Integrate AI writing assistance features into the application. Use OpenAI compatible API directly, integration code snippet is provided at the end.

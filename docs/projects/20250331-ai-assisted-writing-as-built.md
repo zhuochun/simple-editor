@@ -1,8 +1,6 @@
 > Status: As-built historical companion
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v3-spec-ai.md` at `bb3cd4c^`
-
-# Specification: AI-assisted Writing (v3 - As Implemented)
+# Specification: AI-assisted Writing (As Implemented)
 
 Integrate AI writing assistance features into the application using an OpenAI-compatible API.
 

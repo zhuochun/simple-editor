@@ -8,7 +8,7 @@ import {
     getGroupPresentation,
     getHierarchyDepth,
     getHistorySelection
-} from '../editorView.js';
+} from '../../src/editor/editorView.js';
 
 function createFakeElement() {
     const listeners = new Map();

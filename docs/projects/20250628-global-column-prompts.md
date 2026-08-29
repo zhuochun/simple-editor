@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v6-spec.md` at `bb3cd4c^`
-
 # Global Prompt and Column Prompt Separation
 
 Building upon the v3 specification, the Global Prompt is now a project level field instead of being tied to column 0.

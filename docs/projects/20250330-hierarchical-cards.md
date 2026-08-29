@@ -1,7 +1,5 @@
 > Status: Implemented historical project
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v1-spec.md` at `bb3cd4c^`
-
 Create an interactive writing tool using HTML, CSS, and JavaScript.
 
 The tool contains an interface with multiple columns of nested, editable cards.

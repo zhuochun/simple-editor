@@ -8,10 +8,10 @@ import {
     normalizeProjectExport,
     parseProjectExport,
     projectToPlainText
-} from '../projectFormat.js';
+} from '../../src/project/projectFormat.js';
 
 test('accepts and normalizes the unversioned onboarding project', async () => {
-    const source = await readFile(new URL('../examples/new-onboarding.json', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../../examples/new-onboarding.json', import.meta.url), 'utf8');
     const result = parseProjectExport(source);
 
     assert.equal(result.ok, true);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createMoveCardHandler } from '../editorController.js';
+import { createMoveCardHandler } from '../../src/app/editorController.js';
 
 function createHarness({ busy = false, affectedColumns = [0, 1], renderedColumnCount = 3 } = {}) {
     const calls = [];

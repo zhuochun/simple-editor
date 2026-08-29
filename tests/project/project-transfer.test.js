@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { createProjectTransfer, downloadBrowserFile } from '../projectTransfer.js';
+import { createProjectTransfer, downloadBrowserFile } from '../../src/project/projectTransfer.js';
 
 function createHarness() {
     const addedProjects = [];

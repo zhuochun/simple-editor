@@ -1,7 +1,5 @@
 > Status: As-built historical companion
 > Current authority: [Domain](../domain.md)
-> Recovered from: `docs/v1-spec-ai.md` at `bb3cd4c^`
-
 # Interactive Writing Tool - Detailed Specifications
 
 This document outlines the features and behavior of the interactive writing tool built with HTML, CSS, and JavaScript, as implemented in the final code version.
