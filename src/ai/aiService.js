@@ -1,5 +1,5 @@
 const AI_SERVICE_CONFIG = {
-    SITE_URL: "https://www.bicrement.com/simple-editor/", // Or your deployed URL
+    SITE_URL: "https://editor.bicrement.com/",
     SITE_NAME: "Bicrement Writing Tool",
     STORAGE_KEY_AI_SETTINGS: 'writingToolAiSettings',
     AI_SYSTEM_PROMPT: `You are an AI writing partner specialized for a column-based, hierarchical card writing tool. This tool uses a multi-column layout where users build complex documents by organizing text into discrete, editable cards.

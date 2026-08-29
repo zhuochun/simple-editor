@@ -54,6 +54,19 @@ npx playwright install chromium
 npm run verify
 ```
 
+## Production build and deployment
+
+Create the same optimized artifact used by GitHub Pages:
+
+```bash
+npm run build
+npm run preview
+```
+
+The generated `dist/` directory contains bundled and minified HTML, CSS, and JavaScript. Source maps are disabled and rejected by the build. `dist/` is generated output and is not committed.
+
+After the repository's Pages publishing source is set to **GitHub Actions**, pushes to `main` run the **Deploy Pages** workflow, which builds `dist/` and publishes it. The production URL is `https://editor.bicrement.com/`; the repository's Pages settings own that custom-domain association, while the DNS host owns the `editor` CNAME record.
+
 ## Credits
 
 Built with vibe by [Zhuochun](https://github.com/zhuochun) together with Gemini 2.5 Pro 🪄.

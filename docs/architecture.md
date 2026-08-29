@@ -6,7 +6,9 @@ This document is the current authority for code ownership and dependency directi
 
 ## Runtime
 
-Simple Editor is a browser-only application built with native HTML, CSS, and ES modules. It has no framework, build step, application server, or remote persistence service. Browser `localStorage` is the persistence boundary.
+Simple Editor is a browser-only application authored with native HTML, CSS, and ES modules. It has no runtime framework, application server, or remote persistence service. Browser `localStorage` is the persistence boundary.
+
+Local development serves the source module graph directly. The production build bundles and minifies JavaScript and CSS, minifies HTML, copies required static resources, and emits no source maps into generated `dist/`. This deployment optimization does not change runtime ownership or make generated files authoritative source.
 
 ## Composition and dependency direction
 
@@ -32,7 +34,8 @@ main
 - `src/ai/` contains AI workflow policy and provider transport.
 - `styles/` and `assets/` contain browser-served static resources.
 - `tests/` mirrors the source ownership areas; `tests/browser/` contains real-browser smoke coverage.
-- `scripts/` contains cross-platform verification entry points.
+- `scripts/` contains cross-platform build and verification entry points.
+- `dist/` is ignored, replaceable production output created by `scripts/build.mjs`.
 
 ## Module ownership
 
@@ -56,6 +59,7 @@ main
 - AI transport does not decide card placement; AI workflow does not construct provider requests.
 - AI settings presentation does not construct or parse provider requests; the service does not query or mutate the DOM.
 - Document presentation cannot move or reparent Cards. Shortcut and controller commands pass complete sibling-scoped mutations to project state.
+- Production deployment consumes only `dist/`; development and source ownership remain in `index.html`, `styles/`, `assets/`, and `src/`.
 
 ## When to revisit
 

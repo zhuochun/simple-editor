@@ -11,7 +11,7 @@ export default defineConfig({
         trace: 'retain-on-failure'
     },
     webServer: {
-        command: 'npm run dev -- --listen tcp://127.0.0.1:4173',
+        command: 'npm run preview -- --listen tcp://127.0.0.1:4173',
         url: 'http://127.0.0.1:4173',
         reuseExistingServer: !process.env.CI
     },

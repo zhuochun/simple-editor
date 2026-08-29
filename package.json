@@ -7,13 +7,17 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "build": "node scripts/build.mjs",
     "dev": "serve .",
+    "preview": "serve dist",
     "test": "node scripts/run-unit-tests.mjs",
-    "test:browser": "playwright test",
+    "test:browser": "npm run build && playwright test",
     "verify": "node scripts/verify.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "esbuild": "^0.28.2",
+    "html-minifier-terser": "^7.2.0",
     "serve": "^14.2.6"
   }
 }

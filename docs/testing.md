@@ -39,7 +39,7 @@ Then run:
 npm run verify
 ```
 
-The cross-platform verifier runs `node --check` over source, tests, scripts, and Playwright configuration; then it runs the non-provider Node suite and the Chromium smoke suite.
+The cross-platform verifier runs `node --check` over source, tests, scripts, and Playwright configuration; then it runs the non-provider Node suite, builds the production artifact, and runs the Chromium smoke suite against that artifact.
 
 ## Browser checks
 
@@ -49,7 +49,7 @@ Run the automated browser smoke suite independently with:
 npm run test:browser
 ```
 
-It verifies startup, default project and column rendering, Card creation and blur persistence, reload restoration, Map-to-Document navigation, return to Map, and project import through the browser file chooser. It uses local fixtures only and never contacts an AI provider.
+It first replaces `dist/` with bundled and minified production output, failing if any source map is emitted. Chromium then verifies startup, default project and column rendering, Card creation and blur persistence, reload restoration, Map-to-Document navigation, return to Map, and project import through the browser file chooser. It uses local fixtures only and never contacts an AI provider.
 
 DOM and interaction changes also need a local browser smoke check. Exercise the affected paths, normally including startup, project and card rendering, content editing, rename finalization, add/delete behavior, and absence of runtime errors.
 
@@ -77,4 +77,4 @@ Real-provider testing is optional and separate. Never place API keys in fixtures
 
 ## Before committing
 
-Run the narrow affected tests first, then `npm run verify` and `git diff --check`. Record any focused manual browser or provider checks separately from the automated suites.
+Run the narrow affected tests first, then `npm run verify` and `git diff --check`. For deployment changes, also inspect `npm run build` output and confirm that `dist/` contains no `.map` files. Record any focused manual browser or provider checks separately from the automated suites.
